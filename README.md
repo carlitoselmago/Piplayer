@@ -18,9 +18,22 @@ sudo bash install.sh
 - wav (recommended)
 - mp3
 
+### Sequences
+
+- mid (with multiple tracks)
+
 
 ## How to use
 
+If using midi files to control sequences, first run:
+
 ```
-python piplayer beat.wav --loop --gui
+python piplayer_setup.py myfile.mid
 ```
+
+And for playback run:
+
+```
+python piplayer beat.wav --sequence seq.mid --loop --gui
+```
+
