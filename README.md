@@ -11,7 +11,7 @@ Run
 sudo bash install.sh
 ```
 
-## Compativle Formats
+## Compatible Formats
 
 ### Audio
 
