@@ -1,79 +1,111 @@
-# piplayer.py
-
 import time
 import argparse
 from modules.audio_player import AudioPlayer
-#from sequence_loader import SequenceLoader
-#from signal_controller import SignalController
+from modules.terminal_gui import TerminalGUI
+# from modules.sequence_loader import SequenceLoader
+# from modules.signal_controller import SignalController
+
 
 class PiPlayer:
-    def __init__(self, audio_file: str = None, sequence_file: str = None, loop: bool = False):
+    def __init__(
+        self,
+        audio_file: str | None = None,
+        sequence_file: str | None = None,
+        loop: bool = False,
+        gui: bool = False,
+    ):
         self.audio_file = audio_file
         self.sequence_file = sequence_file
         self.loop = loop
-        
-        self.audio_player = None
+
+        # ---------- components ----------
+        self.audio_player: AudioPlayer | None = None
         self.sequence = None
         self.signal_controller = None
+        self.gui: TerminalGUI | None = None
 
-        # Initialize components if given
         if self.audio_file:
             self.audio_player = AudioPlayer(self.audio_file)
-        
-        if self.sequence_file:
-            self.sequence = SequenceLoader(self.sequence_file)
-            self.signal_controller = SignalController(self.sequence)
 
-    def play(self):
-        """Start playback of audio and signal sequence in sync."""
+        # Optional ASCII GUI
+        if gui and self.audio_player:
+            dur = self.audio_player.duration
+            tracks = ["AUDIO"]
+            # if self.sequence_file: tracks.extend(self.sequence.track_names)
+            self.gui = TerminalGUI(dur, tracks)
+
+        # Future: sequence / signal controller
+        # if self.sequence_file:
+        #     self.sequence = SequenceLoader(self.sequence_file)
+        #     self.signal_controller = SignalController(self.sequence)
+
+    # --------------------------------------------------------------------- #
+    def play(self) -> None:
         print("Starting PiPlayer...")
-        
+        if self.gui:
+            self.gui.start()
+
         try:
             while True:
-                start_time = time.monotonic()
+                cycle_start = time.monotonic()
 
-                # Start audio if available
                 if self.audio_player:
                     self.audio_player.start()
-
-                # Start signal controller
                 if self.signal_controller:
-                    self.signal_controller.start(start_time)
+                    self.signal_controller.start(cycle_start)
 
-                # Wait for audio to finish if there is audio
+                # ----- monitoring loop -----
+                while True:
+                    now = time.monotonic() - cycle_start
+                    if self.gui:
+                        self.gui.update(now)
+
+                    # Finished?  (time-based so it works with any backend)
+                    if (not self.audio_player) or (now >= self.audio_player.duration):
+                        break
+
+                    time.sleep(0.02)  # 20 Hz check
+
                 if self.audio_player:
                     self.audio_player.wait_done()
-                
-                # If not looping, break
+                if self.signal_controller:
+                    self.signal_controller.wait_done()
+
                 if not self.loop:
                     break
 
-                print("Looping playback...")
-
         except KeyboardInterrupt:
-            print("Stopping playback...")
-
+            print("\nStopping playback…")
             if self.audio_player:
                 self.audio_player.stop()
             if self.signal_controller:
                 self.signal_controller.stop()
 
-            print("Playback stopped.")
+        finally:
+            if self.gui:
+                self.gui.stop()
 
-def main():
-    parser = argparse.ArgumentParser(description="PiPlayer - Play audio and synchronized signals on a Raspberry Pi.")
-    parser.add_argument("audio_file", nargs="?", default=None, help="Path to the audio file (e.g., audio.wav)")
-    parser.add_argument("--sequence", "-s", help="Path to the sequence file (e.g., signals.mid or signals.csv)")
-    parser.add_argument("--loop", "-l", action="store_true", help="Loop playback indefinitely")
+
+# ------------------------------------------------------------------------- #
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="PiPlayer – play audio and synchronized signals."
+    )
+    parser.add_argument("audio_file", help="Path to an audio file (WAV or MP3)")
+    parser.add_argument("-s", "--sequence", help="Path to a sequence file")
+    parser.add_argument("-l", "--loop", action="store_true", help="Loop playback")
+    parser.add_argument("-g", "--gui", action="store_true", help="ASCII progress GUI")
 
     args = parser.parse_args()
 
     player = PiPlayer(
         audio_file=args.audio_file,
         sequence_file=args.sequence,
-        loop=args.loop
+        loop=args.loop,
+        gui=args.gui,
     )
     player.play()
+
 
 if __name__ == "__main__":
     main()

@@ -1,60 +1,42 @@
-# modules/audio_player.py
+import os
+import sounddevice as sd
+import soundfile as sf
+import numpy as np
 
-import simpleaudio as sa
-from pydub import AudioSegment
-import threading
 
 class AudioPlayer:
-    def __init__(self, file_path):
-        self.file_path = file_path
-        self.audio_segment = None
-        self.play_obj = None
-        self._load_audio()
-        self._stop_requested = False
+    """
+    Lightweight WAV / MP3 player using sounddevice + soundfile.
+    start()      – begins playback (non-blocking)
+    wait_done()  – blocks until playback ends
+    stop()       – aborts immediately
+    """
 
-    def _load_audio(self):
-        """Load audio file into memory."""
-        print(f"Loading audio file: {self.file_path}")
-        if self.file_path.lower().endswith(".wav"):
-            self.audio_segment = AudioSegment.from_wav(self.file_path)
-        elif self.file_path.lower().endswith(".mp3"):
-            self.audio_segment = AudioSegment.from_mp3(self.file_path)
-        else:
-            raise ValueError("Unsupported audio format. Only WAV and MP3 are supported.")
+    def __init__(self, file_path: str):
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(file_path)
 
-    def start(self):
-        """Start audio playback in a separate thread."""
-        self._stop_requested = False
-        threading.Thread(target=self._play_audio, daemon=True).start()
+        # Read full file as float32 numpy array
+        self.data, self.sr = sf.read(file_path, dtype="float32", always_2d=True)
+        self.duration = len(self.data) / self.sr          # seconds, float
 
-    def _play_audio(self):
-        """Internal method to handle audio playback."""
-        raw_data = self.audio_segment.raw_data
-        sample_rate = self.audio_segment.frame_rate
-        num_channels = self.audio_segment.channels
-        bytes_per_sample = self.audio_segment.sample_width
+        self.playing: bool = False
 
-        self.play_obj = sa.play_buffer(
-            raw_data,
-            num_channels,
-            bytes_per_sample,
-            sample_rate
-        )
+    # ---------- public API ----------
+    def start(self) -> None:
+        """Begin playback (returns immediately)."""
+        sd.stop()                                 # be sure nothing else runs
+        sd.play(self.data, self.sr, blocking=False)
+        self.playing = True
 
-        # Wait until finished unless stop requested
-        while self.play_obj.is_playing():
-            if self._stop_requested:
-                self.play_obj.stop()
-                break
+    def wait_done(self) -> None:
+        """Block until current playback ends."""
+        if self.playing:
+            sd.wait()
+            self.playing = False
 
-    def wait_done(self):
-        """Block until audio playback is finished."""
-        if self.play_obj:
-            self.play_obj.wait_done()
-
-    def stop(self):
-        """Stop audio playback."""
-        if self.play_obj and self.play_obj.is_playing():
-            self._stop_requested = True
-            self.play_obj.stop()
-
+    def stop(self) -> None:
+        """Stop playback immediately."""
+        if self.playing:
+            sd.stop()
+            self.playing = False

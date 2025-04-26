@@ -1,1 +1,2 @@
-simpleaudio
+sounddevice 
+soundfile
