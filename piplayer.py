@@ -34,6 +34,11 @@ class PiPlayer:
         if self.sequence_file:
             self.sequence = SequenceLoader(self.sequence_file)
 
+        if self.sequence:
+            self.sequence_duration = max(ev.time_s for ev in self.sequence.events)
+        else:
+            self.sequence_duration = 0.0
+
         if gui:
             track_events = {}
 
@@ -84,7 +89,7 @@ class PiPlayer:
                     self.audio_player.start()
 
                 if self.sequence:
-                    fresh_events = list(self.sequence.events)  # force fresh events
+                    fresh_events = list(self.sequence.events)
                     self.sequence_proc = multiprocessing.Process(
                         target=SequenceProcess.run,
                         args=(fresh_events, cycle_start),
@@ -99,11 +104,12 @@ class PiPlayer:
                     if self.gui:
                         self.gui.update(now)
 
-                    if self.audio_player and now >= self.audio_player.duration:
-                        break
-
-                    if not self.audio_player and now >= 9999:
-                        break
+                    if self.audio_player:
+                        if now >= self.audio_player.duration:
+                            break
+                    elif self.sequence:
+                        if now >= self.sequence_duration:
+                            break
 
                     time.sleep(0.02)
 
@@ -129,8 +135,6 @@ class PiPlayer:
         finally:
             if self.gui:
                 self.gui.stop()
-
-
 
 # -------------------------------------------------------------------
 def main() -> None:
@@ -161,5 +165,5 @@ def main() -> None:
     player.play()
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method('fork')
+    multiprocessing.set_start_method('fork', force=True)
     main()

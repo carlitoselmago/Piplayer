@@ -1,93 +1,38 @@
-# modules/sequence_loader.py
-from __future__ import annotations
-import mido
-from dataclasses import dataclass
-from collections import defaultdict
+# modules/sequence_process.py
 
+import time
+from modules.sequence_loader import MidiEvent
+from modules.gpio_driver import GPIODriver
 
-@dataclass
-class MidiEvent:
-    time_s: float            # absolute time in seconds
-    track: str               # track name (or "Track-N")
-    msg: mido.Message        # the raw mido message
+class SequenceProcess:
+    """Standalone worker process for sequence event triggering."""
 
+    @staticmethod
+    def run(events: list[MidiEvent], cycle_start: float) -> None:
+        gpio_driver = None
+        pins_needed = set()
 
-class SequenceLoader:
-    """
-    Loads a SMF (.mid) file, converts delta times → absolute seconds,
-    keeps events sorted chronologically.
-    """
-
-    def __init__(self, midi_path: str):
-        self.midi_path = midi_path
-        self.events: list[MidiEvent] = []
-        self.track_names: list[str] = []
-        self._load()
-
-    # ------------------------------------------------------------
-    def _load(self) -> None:
-        mid = mido.MidiFile(self.midi_path)
-
-        # Defaults (can be overridden by SetTempo)
-        tempo = 500_000                     # µs per beat = 120 BPM
-        ticks_per_beat = mid.ticks_per_beat
-
-        # Collect track names
-        name_by_track = {}
-
-
-        for i, track in enumerate(mid.tracks):
-            for msg in track:
-                if msg.type == "track_name":
-                    name_by_track[i] = msg.name
-                    break
-
-        # Fallback: assign default names if any tracks are unnamed
-        self.track_names = [
-            name_by_track.get(i, f"Track-{i}") for i in range(len(mid.tracks))
-        ]
-
-        # Walk all tracks side-by-side
-        absolute_time_ticks = [0] * len(mid.tracks)
-        iterators = [iter(t) for t in mid.tracks]
-        pointers = [next(it, None) for it in iterators]
-
-        while any(p is not None for p in pointers):
-            # Select the next earliest event across tracks
-            next_track = min(
-                (ti for ti, msg in enumerate(pointers) if msg is not None),
-                key=lambda ti: absolute_time_ticks[ti] + pointers[ti].time,
-            )
-            msg = pointers[next_track]
-            absolute_time_ticks[next_track] += msg.time
-
-            # Handle tempo changes
-            if msg.type == "set_tempo":
-                tempo = msg.tempo
-
-            # Convert ticks → seconds
-            time_s = (absolute_time_ticks[next_track] / ticks_per_beat) * (tempo / 1_000_000)
-
-            # Store only musical events for now
-            if msg.type in ("note_on", "note_off"):
-                self.events.append(
-                    MidiEvent(time_s, name_by_track[next_track], msg)
-                )
-
-            # Advance pointer in that track
-            pointers[next_track] = next(iterators[next_track], None)
-
-        # Sort (should already be sorted, but just in case)
-        self.events.sort(key=lambda e: e.time_s)
-
-    # ------------------------------------------------------------
-    def debug_print(self) -> None:
-        print(f"\nMIDI DEBUG: {len(self.events)} note events\n" + "-" * 40)
-        for ev in self.events:
-            t = f"{ev.time_s:7.3f}"
+        for ev in events:
             if ev.msg.type == "note_on":
-                print(f"{t}  {ev.track:<10} NOTE-ON  ch={ev.msg.channel+1} "
-                      f"note={ev.msg.note}  vel={ev.msg.velocity}")
-            else:
-                print(f"{t}  {ev.track:<10} note-off ch={ev.msg.channel+1} note={ev.msg.note}")
-        print("-" * 40 + "\n")
+                pins_needed.add(ev.msg.note)
+
+        if pins_needed:
+            gpio_driver = GPIODriver(list(pins_needed))
+
+        print(f"[SequenceProcess] New Cycle Start Time: {cycle_start:.3f}")
+
+        for ev in events:
+            target_time = cycle_start + ev.time_s
+            print(f"[SequenceProcess] Scheduling event at {ev.time_s:.3f}s -> Absolute {target_time:.3f}")
+
+            while True:
+                now = time.monotonic()
+                if now >= target_time:
+                    if ev.msg.type == "note_on":
+                        if gpio_driver:
+                            gpio_driver.note_on(ev.msg.note, ev.msg.velocity)
+                    elif ev.msg.type == "note_off":
+                        if gpio_driver:
+                            gpio_driver.note_off(ev.msg.note)
+                    break
+                time.sleep(0.001)
