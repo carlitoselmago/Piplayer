@@ -23,9 +23,10 @@ class GPIODriver:
             GPIO.setmode(GPIO.BCM)
             for pin in self.pins:
                 GPIO.setup(pin, GPIO.OUT)
-                GPIO.output(pin, GPIO.LOW)  # Initialize OFF
+                GPIO.output(pin, GPIO.LOW)
+            print(f"[Real GPIO] Prepared pins: {self.pins}")
         else:
-            print(f"[Mock GPIO] Preparing pins: {self.pins}")
+            print(f"[Mock GPIO] Prepared pins: {self.pins}")
 
     def note_on(self, note: int, velocity: int) -> None:
         """Turn pin ON if velocity > 0, otherwise OFF."""
