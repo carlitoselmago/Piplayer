@@ -78,6 +78,7 @@ class PiPlayer:
                 if self.gui:
                     self.gui.reset()
 
+                # NEW: move cycle_start here
                 cycle_start = time.monotonic()
 
                 if self.audio_player:
@@ -128,6 +129,7 @@ class PiPlayer:
         finally:
             if self.gui:
                 self.gui.stop()
+
 
 # -------------------------------------------------------------------
 def main() -> None:
