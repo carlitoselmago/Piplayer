@@ -21,7 +21,7 @@ class SequenceProcess:
             print(f"[DBG-schedule] t={ev.time_s:7.3f}s  note={getattr(ev.msg,'note','-'):>3}  "
                 f"track={ev.track}")
 
-            delay = target_time - time.monotonic()
+            delay = target - time.monotonic()
             if delay > 0:
                 time.sleep(delay)
 
