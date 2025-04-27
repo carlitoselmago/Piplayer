@@ -1,15 +1,13 @@
 # modules/signal_controller.py
+
 import threading
 import time
 from modules.sequence_loader import MidiEvent
-from modules.gpio_driver import GPIODriver  # <- important!
+from modules.gpio_driver import GPIODriver
 
 class SignalController:
     """
-    Lightweight event player.
-
-    Takes a list of MidiEvent objects, and schedules them
-    relative to a given start time (aligned to audio playback).
+    Lightweight event player for MIDI events.
     """
 
     def __init__(self, events: list[MidiEvent]):
@@ -19,7 +17,7 @@ class SignalController:
         self._started: bool = False
         self._log: list[str] = []
 
-        # NEW: Prepare the GPIO driver
+        # Prepare the GPIO driver
         self.gpio_driver: GPIODriver | None = None
         self._prepare_gpio()
 
@@ -37,9 +35,8 @@ class SignalController:
 
     # -------------------------------------------------------
     def start(self, reference_time: float) -> None:
-        """Start the event scheduler relative to reference_time."""
         if self._started:
-            return  # already running
+            return
         self._stop_requested = False
         self._thread = threading.Thread(
             target=self._run,
@@ -50,34 +47,29 @@ class SignalController:
         self._started = True
 
     def wait_done(self) -> None:
-        """Block until all events have fired."""
         if self._thread:
             self._thread.join()
 
     def stop(self) -> None:
-        """Stop immediately."""
         self._stop_requested = True
         if self.gpio_driver:
             self.gpio_driver.cleanup()
 
     # -------------------------------------------------------
     def _run(self, reference_time: float) -> None:
-        """Worker thread that fires events at the correct time."""
         for ev in self.events:
             target_time = reference_time + ev.time_s
 
-            # Wait until it's time to fire
             while not self._stop_requested:
                 now = time.monotonic()
                 if now >= target_time:
                     self._fire(ev)
                     break
-                time.sleep(0.001)  # very tight poll (~1ms)
+                time.sleep(0.001)
 
         self._started = False
 
     def _fire(self, ev: MidiEvent) -> None:
-        """Fire an event."""
         if ev.msg.type == "note_on":
             msg = f"[{ev.time_s:7.3f}s] {ev.track:<10} → ON  note={ev.msg.note} vel={ev.msg.velocity}"
             self._log.append(msg)

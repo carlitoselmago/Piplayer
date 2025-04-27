@@ -1,11 +1,12 @@
+# piplayer.py
+
 import time
 import argparse
+import json
 from modules.audio_player import AudioPlayer
 from modules.terminal_gui import TerminalGUI
 from modules.sequence_loader import SequenceLoader
 from modules.signal_controller import SignalController
-from modules.gpio_driver import GPIODriver
-
 
 class PiPlayer:
     def __init__(
@@ -33,7 +34,6 @@ class PiPlayer:
         # --- Load MIDI Sequence if given ---
         if self.sequence_file:
             self.sequence = SequenceLoader(self.sequence_file)
-            self.signal_controller = SignalController(self.sequence.events)
 
         # --- Setup GUI if requested ---
         if gui:
@@ -41,7 +41,6 @@ class PiPlayer:
 
             if self.audio_player:
                 track_events["audio"] = []  # AUDIO has no note events
-
                 audio_duration = self.audio_player.duration
             else:
                 audio_duration = 0.0
@@ -71,8 +70,7 @@ class PiPlayer:
             if total_duration > 0:
                 self.gui = TerminalGUI(total_duration, track_events)
 
-
-
+    # ----------------------------------------------------
     def play(self) -> None:
         print("Starting PiPlayer...")
         if self.gui:
@@ -85,12 +83,12 @@ class PiPlayer:
 
                 cycle_start = time.monotonic()
 
-                # Start Audio
                 if self.audio_player:
                     self.audio_player.start()
 
-                # Start SignalController fresh
                 if self.sequence:
+                    if self.signal_controller:
+                        self.signal_controller.stop()
                     self.signal_controller = SignalController(self.sequence.events)
                     self.signal_controller.start(cycle_start)
 
@@ -100,7 +98,6 @@ class PiPlayer:
                     if self.gui:
                         self.gui.update(now)
 
-                    # Finished? (time-based)
                     if (not self.audio_player) or (now >= self.audio_player.duration):
                         break
 
@@ -129,28 +126,25 @@ class PiPlayer:
                 for line in self.signal_controller._log:
                     print(line)
 
-
-
-# ------------------------------------------------------------------------- #
+# ----------------------------------------------------
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="PiPlayer – play audio and synchronized signals."
     )
     parser.add_argument("audio_file", nargs="?", default=None,
-                    help="Path to an audio file (WAV or MP3)")
+                        help="Path to an audio file (WAV or MP3)")
     parser.add_argument("-s", "--sequence", help="Path to a sequence file")
     parser.add_argument("-l", "--loop", action="store_true", help="Loop playback")
     parser.add_argument("-g", "--gui", action="store_true", help="ASCII progress GUI")
     parser.add_argument("--debug-midi", action="store_true",
-                    help="Print all Note events in the MIDI file and exit")
-
+                        help="Print all Note events in the MIDI file and exit")
 
     args = parser.parse_args()
 
     if args.debug_midi:
         seq = SequenceLoader(args.sequence)
         seq.debug_print()
-        return          # exit, don’t run the player
+        return  # exit after debugging
 
     player = PiPlayer(
         audio_file=args.audio_file,
@@ -159,7 +153,6 @@ def main() -> None:
         gui=args.gui,
     )
     player.play()
-
 
 if __name__ == "__main__":
     main()
