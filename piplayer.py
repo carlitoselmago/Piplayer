@@ -77,17 +77,21 @@ class PiPlayer:
         print("Starting PiPlayer...")
         if self.gui:
             self.gui.start()
-     
+
         try:
             while True:
                 if self.gui:
                     self.gui.reset()
-                    
+
                 cycle_start = time.monotonic()
 
+                # Start Audio
                 if self.audio_player:
                     self.audio_player.start()
-                if self.signal_controller:
+
+                # Start SignalController fresh
+                if self.sequence:
+                    self.signal_controller = SignalController(self.sequence.events)
                     self.signal_controller.start(cycle_start)
 
                 # ----- monitoring loop -----
@@ -96,11 +100,11 @@ class PiPlayer:
                     if self.gui:
                         self.gui.update(now)
 
-                    # Finished?  (time-based so it works with any backend)
+                    # Finished? (time-based)
                     if (not self.audio_player) or (now >= self.audio_player.duration):
                         break
 
-                    time.sleep(0.02)  # 20 Hz check
+                    time.sleep(0.02)
 
                 if self.audio_player:
                     self.audio_player.wait_done()
@@ -120,6 +124,11 @@ class PiPlayer:
         finally:
             if self.gui:
                 self.gui.stop()
+
+            if self.signal_controller:
+                for line in self.signal_controller._log:
+                    print(line)
+
 
 
 # ------------------------------------------------------------------------- #
