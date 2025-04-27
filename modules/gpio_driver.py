@@ -2,6 +2,9 @@
 try:
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
+    if GPIO_AVAILABLE:
+        import RPi.GPIO as GPIO
+        GPIO.setwarnings(False)
 except ImportError:
     GPIO_AVAILABLE = False
     print("⚠️  RPi.GPIO not available — using mock mode.")
