@@ -1,8 +1,8 @@
 # modules/sequence_process.py
 
 import time
-from modules.sequence_loader import MidiEvent
 from modules.gpio_driver import GPIODriver
+from modules.sequence_loader import MidiEvent
 
 class SequenceProcess:
     """Standalone worker process for sequence event triggering."""
@@ -36,4 +36,3 @@ class SequenceProcess:
                             gpio_driver.note_off(ev.msg.note)
                     break
                 time.sleep(0.001)
-
