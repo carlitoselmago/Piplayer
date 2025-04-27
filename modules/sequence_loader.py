@@ -1,7 +1,9 @@
 # modules/sequence_loader.py
-
+from __future__ import annotations
 from dataclasses import dataclass
+from typing import List
 from mido import MidiFile, Message, MetaMessage
+
 
 @dataclass
 class MidiEvent:
@@ -9,53 +11,80 @@ class MidiEvent:
     track: str
     msg: Message | MetaMessage
 
+
 class SequenceLoader:
-    """Loads a MIDI file and extracts time-aligned events."""
-    
-    def __init__(self, filename: str):
-        self.filename = filename
-        self.events: list[MidiEvent] = []
-        self.track_names: list[str] = []
+    """
+    Loads a Standard MIDI File and returns an **absolute-time-sorted**
+    list of MidiEvent objects (seconds since start).
+    """
+
+    def __init__(self, midi_path: str):
+        self.midi_path = midi_path
+        self.events: List[MidiEvent] = []
+        self.track_names: List[str] = []
+
         self._load()
 
+    # -----------------------------------------------------------------
     def _load(self) -> None:
-        mid = MidiFile(self.filename)
-        tempo = 500000  # default tempo (us per beat)
-        time_s = 0.0
-        name_by_track = {}
-        
-        for i, track in enumerate(mid.tracks):
-            name = f"Track-{i}"
-            self.track_names.append(name)
-            name_by_track[i] = name
+        mid = MidiFile(self.midi_path)
+        ticks_per_beat = mid.ticks_per_beat
+        default_tempo = 500_000          # 120 BPM
 
-        for i, track in enumerate(mid.tracks):
-            abs_time = 0.0
-            for msg in track:
-                abs_time += msg.time
+        # Each track keeps its own running “ticks” counter
+        abs_ticks = [0] * len(mid.tracks)
+        current_tempo = default_tempo
 
-                if msg.type == "set_tempo":
-                    tempo = msg.tempo
+        # Keep a name for every track (may be overwritten by “track_name”)
+        for i, trk in enumerate(mid.tracks):
+            self.track_names.append(f"Track-{i}")
 
-                if msg.type == "track_name":
-                    name_by_track[i] = msg.name.strip()
+        # Walk *all* tracks simultaneously
+        # We step through messages in chronological order by repeatedly
+        # picking the track whose “next message” has the smallest delta.
+        iterators = [iter(t) for t in mid.tracks]
+        pointers  = [next(it, None) for it in iterators]
 
-                if msg.type in ("note_on", "note_off"):
-                    seconds = (abs_time * tempo) / 1_000_000 / mid.ticks_per_beat
-                    event = MidiEvent(
-                        time_s=seconds,
-                        track=name_by_track[i],
-                        msg=msg
-                    )
-                    self.events.append(event)
+        while any(msg is not None for msg in pointers):
+            # Which track’s next message happens earliest?
+            next_track = min(
+                (ti for ti, msg in enumerate(pointers) if msg is not None),
+                key=lambda ti: abs_ticks[ti] + pointers[ti].time
+            )
+            msg = pointers[next_track]
+            abs_ticks[next_track] += msg.time
 
+            # Tempo changes are global (apply to ALL following tracks)
+            if msg.type == "set_tempo":
+                current_tempo = msg.tempo
+
+            # Track name (cosmetic)
+            if msg.type == "track_name":
+                self.track_names[next_track] = msg.name.strip()
+
+            # Convert *that* track’s current absolute tick value → seconds
+            secs = (abs_ticks[next_track] / ticks_per_beat) * (current_tempo / 1_000_000)
+
+            # Store musical events
+            if msg.type in ("note_on", "note_off"):
+                self.events.append(
+                    MidiEvent(secs, self.track_names[next_track], msg)
+                )
+
+            # Advance to that track’s next message
+            pointers[next_track] = next(iterators[next_track], None)
+
+        # Finally sort (safety) so events are strictly chronological
+        self.events.sort(key=lambda e: e.time_s)
+
+    # -----------------------------------------------------------------
     def debug_print(self) -> None:
-        print(f"\nMIDI DEBUG: {len(self.events)} note events")
-        print("----------------------------------------")
+        print(f"\nMIDI DEBUG: {len(self.events)} note events\n" + "-" * 40)
         for ev in self.events:
-            print(f"Time {ev.time_s:.3f}s Track {ev.track} Note {getattr(ev.msg, 'note', '-')}")
             if ev.msg.type == "note_on":
-                print(f"{ev.time_s:7.3f}  {ev.track:<10}  NOTE-ON  ch={ev.msg.channel+1} note={ev.msg.note} vel={ev.msg.velocity}")
-            elif ev.msg.type == "note_off":
-                print(f"{ev.time_s:7.3f}  {ev.track:<10}  note-off ch={ev.msg.channel+1} note={ev.msg.note}")
-        print("----------------------------------------\n")
+                print(f"{ev.time_s:7.3f}s  {ev.track:<10} NOTE-ON  "
+                      f"note={ev.msg.note:<3} vel={ev.msg.velocity}")
+            else:
+                print(f"{ev.time_s:7.3f}s  {ev.track:<10} note-off "
+                      f"note={ev.msg.note}")
+        print("-" * 40 + "\n")
