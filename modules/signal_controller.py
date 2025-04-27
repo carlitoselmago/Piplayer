@@ -4,14 +4,16 @@ import threading
 import time
 from modules.sequence_loader import MidiEvent
 from modules.gpio_driver import GPIODriver
+from modules.audio_player import AudioPlayer
 
 class SignalController:
     """
     Lightweight event player for MIDI events.
     """
 
-    def __init__(self, events: list[MidiEvent]):
+    def __init__(self, events: list[MidiEvent], audio_player: AudioPlayer | None = None):
         self.events = sorted(events, key=lambda e: e.time_s)
+        self.audio_player = audio_player
         self._thread: threading.Thread | None = None
         self._stop_requested: bool = False
         self._started: bool = False
@@ -58,14 +60,19 @@ class SignalController:
     # -------------------------------------------------------
     def _run(self, reference_time: float) -> None:
         for ev in self.events:
-            target_time = reference_time + ev.time_s
-
             while not self._stop_requested:
-                now = time.monotonic()
-                if now >= target_time:
+                # --- Get "now" time ---
+                if self.audio_player:
+                    now = self.audio_player.get_position()
+                else:
+                    now = time.monotonic() - reference_time
+
+                # --- Fire event if ready ---
+                if now >= ev.time_s:
                     self._fire(ev)
                     break
-                time.sleep(0.001)
+
+                time.sleep(0.001)  # tight 1ms polling
 
         self._started = False
 

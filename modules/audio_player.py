@@ -1,42 +1,50 @@
-import os
-import sounddevice as sd
-import soundfile as sf
-import numpy as np
+# modules/audio_player.py
 
+from pydub import AudioSegment
+import simpleaudio as sa
+import time
 
 class AudioPlayer:
     """
-    Lightweight WAV / MP3 player using sounddevice + soundfile.
-    start()      – begins playback (non-blocking)
-    wait_done()  – blocks until playback ends
-    stop()       – aborts immediately
+    Simple audio player for WAV and MP3 using pydub and simpleaudio.
     """
 
-    def __init__(self, file_path: str):
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(file_path)
+    def __init__(self, filename: str):
+        self.filename = filename
+        self.seg = AudioSegment.from_file(filename)
+        self._play_obj: sa.PlayObject | None = None
+        self._start_time: float | None = None
 
-        # Read full file as float32 numpy array
-        self.data, self.sr = sf.read(file_path, dtype="float32", always_2d=True)
-        self.duration = len(self.data) / self.sr          # seconds, float
+        self.duration = self.seg.duration_seconds  # total duration in seconds
 
-        self.playing: bool = False
-
-    # ---------- public API ----------
     def start(self) -> None:
-        """Begin playback (returns immediately)."""
-        sd.stop()                                 # be sure nothing else runs
-        sd.play(self.data, self.sr, blocking=False)
-        self.playing = True
+        """Start playing the audio."""
+        raw_data = self.seg.raw_data
+        num_channels = self.seg.channels
+        bytes_per_sample = self.seg.sample_width
+        sample_rate = self.seg.frame_rate
+
+        wave_obj = sa.WaveObject(
+            raw_data,
+            num_channels=num_channels,
+            bytes_per_sample=bytes_per_sample,
+            sample_rate=sample_rate
+        )
+        self._play_obj = wave_obj.play()
+        self._start_time = time.monotonic()
 
     def wait_done(self) -> None:
-        """Block until current playback ends."""
-        if self.playing:
-            sd.wait()
-            self.playing = False
+        """Wait until the audio finishes."""
+        if self._play_obj:
+            self._play_obj.wait_done()
 
     def stop(self) -> None:
-        """Stop playback immediately."""
-        if self.playing:
-            sd.stop()
-            self.playing = False
+        """Stop playback."""
+        if self._play_obj:
+            self._play_obj.stop()
+
+    def get_position(self) -> float:
+        """Return the current playback position in seconds."""
+        if self._start_time is None:
+            return 0.0
+        return time.monotonic() - self._start_time
