@@ -2,7 +2,7 @@
 import threading
 import time
 from modules.sequence_loader import MidiEvent
-
+from modules.gpio_driver import GPIODriver  # <- important!
 
 class SignalController:
     """
@@ -17,6 +17,23 @@ class SignalController:
         self._thread: threading.Thread | None = None
         self._stop_requested: bool = False
         self._started: bool = False
+        self._log: list[str] = []
+
+        # NEW: Prepare the GPIO driver
+        self.gpio_driver: GPIODriver | None = None
+        self._prepare_gpio()
+
+    def _prepare_gpio(self) -> None:
+        """Analyze events and initialize GPIO driver if needed."""
+        pins_needed = set()
+
+        for ev in self.events:
+            if ev.msg.type == "note_on":
+                pins_needed.add(ev.msg.note)
+
+        if pins_needed:
+            print(f"[SignalController] Preparing GPIO for pins: {pins_needed}")
+            self.gpio_driver = GPIODriver(list(pins_needed))
 
     # -------------------------------------------------------
     def start(self, reference_time: float) -> None:
@@ -40,6 +57,8 @@ class SignalController:
     def stop(self) -> None:
         """Stop immediately."""
         self._stop_requested = True
+        if self.gpio_driver:
+            self.gpio_driver.cleanup()
 
     # -------------------------------------------------------
     def _run(self, reference_time: float) -> None:
@@ -58,8 +77,17 @@ class SignalController:
         self._started = False
 
     def _fire(self, ev: MidiEvent) -> None:
-        """Fire an event. For now, just print it."""
+        """Fire an event."""
         if ev.msg.type == "note_on":
-            print(f"[{ev.time_s:7.3f}s] {ev.track:<10} → ON  note={ev.msg.note} vel={ev.msg.velocity}")
+            msg = f"[{ev.time_s:7.3f}s] {ev.track:<10} → ON  note={ev.msg.note} vel={ev.msg.velocity}"
+            self._log.append(msg)
+
+            if self.gpio_driver:
+                self.gpio_driver.note_on(ev.msg.note, ev.msg.velocity)
+
         elif ev.msg.type == "note_off":
-            print(f"[{ev.time_s:7.3f}s] {ev.track:<10} → OFF note={ev.msg.note}")
+            msg = f"[{ev.time_s:7.3f}s] {ev.track:<10} → OFF note={ev.msg.note}"
+            self._log.append(msg)
+
+            if self.gpio_driver:
+                self.gpio_driver.note_off(ev.msg.note)
