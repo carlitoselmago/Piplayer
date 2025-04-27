@@ -19,11 +19,11 @@ class SequenceProcess:
         if pins_needed:
             gpio_driver = GPIODriver(list(pins_needed))
 
-        print(f"[SequenceProcess] New Cycle Start Time: {cycle_start:.3f}")
+        #print(f"[SequenceProcess] New Cycle Start Time: {cycle_start:.3f}")
 
         for ev in events:
             target_time = cycle_start + ev.time_s
-            print(f"[SequenceProcess] Scheduling event at {ev.time_s:.3f}s -> Absolute {target_time:.3f}")
+            #print(f"[SequenceProcess] Scheduling event at {ev.time_s:.3f}s -> Absolute {target_time:.3f}")
 
             while True:
                 now = time.monotonic()
