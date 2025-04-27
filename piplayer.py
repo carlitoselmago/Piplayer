@@ -83,30 +83,46 @@ class PiPlayer:
 
                 cycle_start = time.monotonic()
 
+                # Start audio if needed
                 if self.audio_player:
                     self.audio_player.start()
 
+                # Prepare sequence controller
                 if self.sequence:
-                    if self.signal_controller:
-                        self.signal_controller.stop()
-                    self.signal_controller = SignalController(self.sequence.events)
-                    self.signal_controller.start(cycle_start)
+                    self.signal_controller = SignalController(self.sequence.events, self.audio_player)
 
-                # ----- monitoring loop -----
+                event_idx = 0  # event firing pointer
+
+                # ----- main playback loop -----
                 while True:
-                    now = time.monotonic() - cycle_start
+                    # Determine current time
+                    if self.audio_player:
+                        now = self.audio_player.get_position()
+                    else:
+                        now = time.monotonic() - cycle_start
+
+                    # Update GUI
                     if self.gui:
                         self.gui.update(now)
 
-                    if (not self.audio_player) or (now >= self.audio_player.duration):
+                    # Fire sequence events
+                    if self.signal_controller:
+                        while event_idx < len(self.signal_controller.events):
+                            ev = self.signal_controller.events[event_idx]
+                            if now >= ev.time_s:
+                                self.signal_controller.fire(ev)
+                                event_idx += 1
+                            else:
+                                break
+
+                    # Finished?
+                    if (not self.audio_player) or (now >= (self.audio_player.duration if self.audio_player else 0)):
                         break
 
                     time.sleep(0.02)
 
                 if self.audio_player:
                     self.audio_player.wait_done()
-                if self.signal_controller:
-                    self.signal_controller.wait_done()
 
                 if not self.loop:
                     break
@@ -115,15 +131,13 @@ class PiPlayer:
             print("\nStopping playback…")
             if self.audio_player:
                 self.audio_player.stop()
-            if self.signal_controller:
-                self.signal_controller.stop()
 
         finally:
             if self.gui:
                 self.gui.stop()
 
             if self.signal_controller:
-                for line in self.signal_controller._log:
+                for line in self.signal_controller.log:
                     print(line)
 
 # ----------------------------------------------------
@@ -144,7 +158,7 @@ def main() -> None:
     if args.debug_midi:
         seq = SequenceLoader(args.sequence)
         seq.debug_print()
-        return  # exit after debugging
+        return
 
     player = PiPlayer(
         audio_file=args.audio_file,

@@ -4,3 +4,4 @@ python-rtmidi
 mido
 RPi.GPIO
 pydub
+simpleaudio
