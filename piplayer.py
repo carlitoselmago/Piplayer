@@ -78,16 +78,16 @@ class PiPlayer:
                 if self.gui:
                     self.gui.reset()
 
-                # NEW: move cycle_start here
                 cycle_start = time.monotonic()
 
                 if self.audio_player:
                     self.audio_player.start()
 
                 if self.sequence:
+                    fresh_events = list(self.sequence.events)  # force fresh events
                     self.sequence_proc = multiprocessing.Process(
                         target=SequenceProcess.run,
-                        args=(self.sequence.events, cycle_start),
+                        args=(fresh_events, cycle_start),
                         daemon=True
                     )
                     self.sequence_proc.start()
@@ -129,6 +129,7 @@ class PiPlayer:
         finally:
             if self.gui:
                 self.gui.stop()
+
 
 
 # -------------------------------------------------------------------
