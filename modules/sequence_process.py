@@ -8,35 +8,31 @@ class SequenceProcess:
     """Standalone worker process for sequence event triggering."""
 
     @staticmethod
-    @staticmethod
     def run(events: list[MidiEvent], cycle_start: float) -> None:
         gpio_driver = None
-        pins_needed = set()
-
-        for ev in events:
-            if ev.msg.type == "note_on":
-                pins_needed.add(ev.msg.note)
-
+        pins_needed = {ev.msg.note for ev in events if ev.msg.type == "note_on"}
         if pins_needed:
             gpio_driver = GPIODriver(list(pins_needed))
 
-        print(f"[SequenceProcess] New Cycle Start Time: {cycle_start:.3f}")
-
+        print(f"[SequenceProcess] new cycle start = {cycle_start:.6f}")
         for ev in events:
-            target_time = cycle_start + ev.time_s
-            print(f"[SequenceProcess] Scheduling event at {ev.time_s:.3f}s -> Absolute {target_time:.3f}")
+            target = cycle_start + ev.time_s
+            # ─── DEBUG: show every event up-front ───
+            print(f"[DBG-schedule] t={ev.time_s:7.3f}s  note={getattr(ev.msg,'note','-'):>3}  "
+                f"track={ev.track}")
 
-            # Wait until target time
-            while time.monotonic() < target_time:
-                time.sleep(0.001)
+            delay = target_time - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
 
-            # Fire event
+            # ─── DEBUG: show when it really fires ───
+            print(f"[DBG-fire]     now={time.monotonic():.6f}  target={target:.6f}  "
+                f"note={getattr(ev.msg,'note','-'):>3}")
+
             if ev.msg.type == "note_on":
-                print(f"[SequenceProcess] Firing ON: Track {ev.track} Note {ev.msg.note}")
                 if gpio_driver:
                     gpio_driver.note_on(ev.msg.note, ev.msg.velocity)
             elif ev.msg.type == "note_off":
-                print(f"[SequenceProcess] Firing OFF: Track {ev.track} Note {ev.msg.note}")
                 if gpio_driver:
                     gpio_driver.note_off(ev.msg.note)
 
