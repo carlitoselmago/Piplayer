@@ -3,10 +3,11 @@
 import time
 import argparse
 import json
+import multiprocessing
 from modules.audio_player import AudioPlayer
 from modules.terminal_gui import TerminalGUI
 from modules.sequence_loader import SequenceLoader
-from modules.signal_controller import SignalController
+from modules.sequence_process import SequenceProcess
 
 class PiPlayer:
     def __init__(
@@ -24,23 +25,20 @@ class PiPlayer:
 
         self.audio_player: AudioPlayer | None = None
         self.sequence: SequenceLoader | None = None
-        self.signal_controller: SignalController | None = None
         self.gui: TerminalGUI | None = None
+        self.sequence_proc: multiprocessing.Process | None = None
 
-        # --- Load Audio if given ---
         if self.audio_file:
             self.audio_player = AudioPlayer(self.audio_file)
 
-        # --- Load MIDI Sequence if given ---
         if self.sequence_file:
             self.sequence = SequenceLoader(self.sequence_file)
 
-        # --- Setup GUI if requested ---
         if gui:
             track_events = {}
 
             if self.audio_player:
-                track_events["audio"] = []  # AUDIO has no note events
+                track_events["audio"] = []
                 audio_duration = self.audio_player.duration
             else:
                 audio_duration = 0.0
@@ -70,7 +68,6 @@ class PiPlayer:
             if total_duration > 0:
                 self.gui = TerminalGUI(total_duration, track_events)
 
-    # ----------------------------------------------------
     def play(self) -> None:
         print("Starting PiPlayer...")
         if self.gui:
@@ -83,46 +80,39 @@ class PiPlayer:
 
                 cycle_start = time.monotonic()
 
-                # Start audio if needed
                 if self.audio_player:
                     self.audio_player.start()
 
-                # Prepare sequence controller
                 if self.sequence:
-                    self.signal_controller = SignalController(self.sequence.events, self.audio_player)
+                    self.sequence_proc = multiprocessing.Process(
+                        target=SequenceProcess.run,
+                        args=(self.sequence.events, cycle_start),
+                        daemon=True
+                    )
+                    self.sequence_proc.start()
 
-                event_idx = 0  # event firing pointer
-
-                # ----- main playback loop -----
+                # Monitoring loop
                 while True:
-                    # Determine current time
-                    if self.audio_player:
-                        now = self.audio_player.get_position()
-                    else:
-                        now = time.monotonic() - cycle_start
+                    now = time.monotonic() - cycle_start
 
-                    # Update GUI
                     if self.gui:
                         self.gui.update(now)
 
-                    # Fire sequence events
-                    if self.signal_controller:
-                        while event_idx < len(self.signal_controller.events):
-                            ev = self.signal_controller.events[event_idx]
-                            if now >= ev.time_s:
-                                self.signal_controller.fire(ev)
-                                event_idx += 1
-                            else:
-                                break
+                    if self.audio_player and now >= self.audio_player.duration:
+                        break
 
-                    # Finished?
-                    if (not self.audio_player) or (now >= (self.audio_player.duration if self.audio_player else 0)):
+                    if not self.audio_player and now >= 9999:
                         break
 
                     time.sleep(0.02)
 
                 if self.audio_player:
                     self.audio_player.wait_done()
+
+                if self.sequence_proc:
+                    self.sequence_proc.terminate()
+                    self.sequence_proc.join()
+                    self.sequence_proc = None
 
                 if not self.loop:
                     break
@@ -131,16 +121,15 @@ class PiPlayer:
             print("\nStopping playback…")
             if self.audio_player:
                 self.audio_player.stop()
+            if self.sequence_proc:
+                self.sequence_proc.terminate()
+                self.sequence_proc.join()
 
         finally:
             if self.gui:
                 self.gui.stop()
 
-            if self.signal_controller:
-                for line in self.signal_controller.log:
-                    print(line)
-
-# ----------------------------------------------------
+# -------------------------------------------------------------------
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="PiPlayer – play audio and synchronized signals."
@@ -169,4 +158,5 @@ def main() -> None:
     player.play()
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method('fork')
     main()
