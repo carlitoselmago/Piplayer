@@ -4,6 +4,15 @@ import time
 from modules.sequence_loader import MidiEvent
 from modules.gpio_driver import GPIODriver
 
+from dataclasses import dataclass
+from mido import MidiFile, Message, MetaMessage
+
+@dataclass
+class MidiEvent:
+    time_s: float
+    track: str
+    msg: Message | MetaMessage
+    
 class SequenceProcess:
     """Standalone worker process for sequence event triggering."""
 
