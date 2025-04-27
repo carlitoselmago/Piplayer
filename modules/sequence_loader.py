@@ -53,6 +53,7 @@ class SequenceLoader:
         print(f"\nMIDI DEBUG: {len(self.events)} note events")
         print("----------------------------------------")
         for ev in self.events:
+            print(f"Time {ev.time_s:.3f}s Track {ev.track} Note {getattr(ev.msg, 'note', '-')}")
             if ev.msg.type == "note_on":
                 print(f"{ev.time_s:7.3f}  {ev.track:<10}  NOTE-ON  ch={ev.msg.channel+1} note={ev.msg.note} vel={ev.msg.velocity}")
             elif ev.msg.type == "note_off":
