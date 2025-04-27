@@ -1,7 +1,7 @@
 # modules/sequence_process.py
 import time
-from modules.gpio_driver import GPIODriver
-from modules.sequence_loader import MidiEvent
+from .gpio_driver import GPIODriver
+from .sequence_loader import MidiEvent
 
 
 class SequenceProcess:

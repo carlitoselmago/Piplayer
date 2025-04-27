@@ -28,12 +28,21 @@ sudo bash install.sh
 If using midi files to control sequences, first run:
 
 ```
-python piplayer_setup.py myfile.mid
+piplayer-setup myfile.mid
 ```
 
 And for playback run:
 
 ```
-python piplayer beat.wav --sequence seq.mid --loop --gui
+piplayer beat.wav --sequence seq.mid --loop --gui
 ```
 
+## Developer notes:
+
+**TODO:**
+- Fix GUI, it doesn't work in a solid way
+
+Install with this for development
+```
+sudo pip install -e .
+```

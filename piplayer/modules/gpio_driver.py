@@ -1,13 +1,14 @@
 # modules/gpio_driver.py
+
 try:
     import RPi.GPIO as GPIO
+    GPIO.setmode(GPIO.BCM)  # Set mode early to trigger RuntimeError if not on Pi
+    GPIO.setwarnings(False)  # Disable warnings
     GPIO_AVAILABLE = True
-    if GPIO_AVAILABLE:
-        import RPi.GPIO as GPIO
-        GPIO.setwarnings(False)
-except ImportError:
+except (ImportError, RuntimeError):
     GPIO_AVAILABLE = False
-    print("⚠️  RPi.GPIO not available — using mock mode.")
+    print("⚠️  RPi.GPIO not available or not running on Raspberry Pi — using mock mode.")
+
 
 class GPIODriver:
     """

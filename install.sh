@@ -1,4 +1,7 @@
-sudo apt-get install libportaudio2
-sudo apt install libasound2-dev
+#!/bin/bash
 
-pip install -r requirements.txt
+# Install system libraries needed for audio
+sudo apt-get update
+sudo apt-get install -y libasound2-dev mpv
+
+pip install .

@@ -1,6 +1,3 @@
-sounddevice 
-soundfile
-python-rtmidi
 mido
 RPi.GPIO
 pydub

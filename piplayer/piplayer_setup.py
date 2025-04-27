@@ -1,7 +1,8 @@
 # piplayer_setup.py
 import json
 import argparse
-from modules.sequence_loader import SequenceLoader
+from piplayer.modules.sequence_loader import SequenceLoader
+
 
 # Available output types
 PROTOCOL_CHOICES = {
