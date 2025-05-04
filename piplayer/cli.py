@@ -5,6 +5,7 @@ import time
 import argparse
 import json
 import multiprocessing
+from typing import Optional
 from .modules.audio_player import AudioPlayer
 from .modules.terminal_gui import TerminalGUI
 from .modules.sequence_loader import SequenceLoader
@@ -14,21 +15,21 @@ from .modules.sequence_process import SequenceProcess
 class PiPlayer:
     def __init__(
         self,
-        audio_file: str | None = None,
-        sequence_file: str | None = None,
+        audio_file: Optional[str] = None,
+        sequence_file: Optional[str] = None,
         loop: bool = False,
         gui: bool = False,
-        config_file: str | None = None,
+        config_file: Optional[str] = None,
     ):
         self.audio_file = audio_file
         self.sequence_file = sequence_file
         self.loop = loop
         self.config_file = config_file
 
-        self.audio_player: AudioPlayer | None = None
-        self.sequence: SequenceLoader | None = None
-        self.gui: TerminalGUI | None = None
-        self.sequence_proc: multiprocessing.Process | None = None
+        self.audio_player: Optional[AudioPlayer] = None
+        self.sequence: Optional[SequenceLoader] = None
+        self.gui: Optional[TerminalGUI] = None
+        self.sequence_proc: Optional[multiprocessing.Process] = None
 
         if self.audio_file:
             self.audio_player = AudioPlayer(self.audio_file)
