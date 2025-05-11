@@ -51,10 +51,10 @@ class PiPlayer:
         if self.sequence_file:
             self.sequence = SequenceLoader(self.sequence_file)
 
-        self.sequence_duration = (
-            max(ev.time_s for ev in self.sequence.events)
-            if self.sequence else 0.0
-        )
+        if self.sequence and self.sequence.events:
+            self.sequence_duration = max(ev.time_s for ev in self.sequence.events)
+        else:
+            self.sequence_duration = 0.0
 
         if gui:
             self._init_gui()
