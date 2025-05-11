@@ -10,11 +10,15 @@ from .modules.terminal_gui import TerminalGUI
 from .modules.sequence_loader import SequenceLoader
 from .modules.sequence_process import SequenceProcess
 <<<<<<< HEAD
+<<<<<<< HEAD
 from .modules.sync_network import SyncMaster, SyncFollower
 
 SYNC_TOLERANCE = 0.05
 SYNC_GRACE_TIME = 3.0
 SYNC_JUMP_AHEAD = 0.25
+=======
+
+>>>>>>> parent of c350eb7 (first version of sync module)
 =======
 
 >>>>>>> parent of c350eb7 (first version of sync module)
@@ -28,7 +32,10 @@ class PiPlayer:
         gui: bool = False,
         config_file: Optional[str] = None,
 <<<<<<< HEAD
+<<<<<<< HEAD
         mode: Optional[str] = None,
+=======
+>>>>>>> parent of c350eb7 (first version of sync module)
 =======
 >>>>>>> parent of c350eb7 (first version of sync module)
     ):
@@ -37,7 +44,10 @@ class PiPlayer:
         self.loop = loop
         self.config_file = config_file
 <<<<<<< HEAD
+<<<<<<< HEAD
         self.mode = mode  # 'master' or 'follower'
+=======
+>>>>>>> parent of c350eb7 (first version of sync module)
 =======
 >>>>>>> parent of c350eb7 (first version of sync module)
 
@@ -46,8 +56,11 @@ class PiPlayer:
         self.gui: Optional[TerminalGUI] = None
         self.sequence_proc: Optional[multiprocessing.Process] = None
 <<<<<<< HEAD
+<<<<<<< HEAD
         self.sync_master: Optional[SyncMaster] = None
         self.sync_follower: Optional[SyncFollower] = None
+=======
+>>>>>>> parent of c350eb7 (first version of sync module)
 =======
 >>>>>>> parent of c350eb7 (first version of sync module)
 
@@ -224,10 +237,13 @@ class PiPlayer:
             if self.gui:
                 self.gui.stop()
 <<<<<<< HEAD
+<<<<<<< HEAD
             if self.sync_master:
                 self.sync_master.stop()
             if self.sync_follower:
                 self.sync_follower.stop()
+=======
+>>>>>>> parent of c350eb7 (first version of sync module)
 =======
 >>>>>>> parent of c350eb7 (first version of sync module)
 
