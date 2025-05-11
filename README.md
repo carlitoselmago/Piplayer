@@ -37,6 +37,12 @@ And for playback run:
 piplayer beat.wav --sequence seq.mid --loop --gui
 ```
 
+## Sync modes
+```
+piplayer sound.wav -s lights.mid --gui --mode master
+piplayer sound.wav -s lights.mid --gui --mode master
+```
+
 ## Developer notes:
 
 **TODO:**
