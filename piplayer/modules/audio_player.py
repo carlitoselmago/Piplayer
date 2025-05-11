@@ -16,10 +16,14 @@ class AudioPlayer:
         seg = AudioSegment.from_file(filename)
         self.duration = seg.duration_seconds
 
-    def start(self) -> None:
-        self.stop()  # Stop previous if any
+    def start(self, seek: float = 0.0) -> None:
+        self.stop()
+        args = ["mpv", "--no-terminal", "--quiet", "--audio-display=no"]
+        if seek > 0:
+            args.append(f"--start={seek}")
+        args.append(self.filename)
         self.process = subprocess.Popen(
-            ["mpv", "--no-terminal", "--quiet", "--audio-display=no", self.filename],
+            args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )

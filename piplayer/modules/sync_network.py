@@ -73,7 +73,8 @@ class SyncFollower:
     """Listens for master broadcast and produces a smoothed synced clock."""
 
     def __init__(self):
-        self._offset   = 0.0   # seconds added to local monotonic to match master
+        self._offset = 0.0
+        self.drift   = 0.0          #  <-- NEW  (last raw drift)
         self._running  = False
         self._thread: Optional[threading.Thread] = None
 
@@ -111,6 +112,8 @@ class SyncFollower:
                 est_master  = t_play + net_delay / 2.0  # estimated master play time
                 local_play  = now_local + self._offset  # our current play time
                 drift       = est_master - local_play
+
+                self.drift = drift          #  <-- NEW  (expose it)
 
                 # Low‑pass filter the drift → smooth correction
                 self._offset += ALPHA * drift
