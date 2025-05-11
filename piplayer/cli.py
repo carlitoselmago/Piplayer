@@ -1,17 +1,28 @@
 #!/usr/bin/env python3
 # piplayer/cli.py
+"""
+PiPlayer main CLI.
+Supports local / master / follower modes.
+Follower prints drift every second and re-cues if absolute drift > 50 ms.
+"""
 
 import time
+import math
 import argparse
 import json
 import multiprocessing
 from typing import Optional
+
 from .modules.audio_player import AudioPlayer
 from .modules.terminal_gui import TerminalGUI
 from .modules.sequence_loader import SequenceLoader
 from .modules.sequence_process import SequenceProcess
-from .modules.sync_network import SyncMaster, SyncFollower  # NEW
+from .modules.sync_network import SyncMaster, SyncFollower
 
+DRIFT_LIMIT = 0.050  # seconds – jump-correct if follower drift exceeds this
+
+
+# ---------------------------------------------------------------------------
 class PiPlayer:
     def __init__(
         self,
@@ -20,7 +31,7 @@ class PiPlayer:
         loop: bool = False,
         gui: bool = False,
         config_file: Optional[str] = None,
-        mode: str = "local",  # "master", "follower", or "local"
+        mode: str = "local",           # "local", "master", "follower"
     ):
         self.audio_file = audio_file
         self.sequence_file = sequence_file
@@ -34,72 +45,79 @@ class PiPlayer:
         self.sequence_proc: Optional[multiprocessing.Process] = None
         self.sync: Optional[SyncFollower] = None
 
+        # ---------- load resources ----------
         if self.audio_file:
             self.audio_player = AudioPlayer(self.audio_file)
 
         if self.sequence_file:
             self.sequence = SequenceLoader(self.sequence_file)
 
-        if self.sequence:
-            self.sequence_duration = max(ev.time_s for ev in self.sequence.events)
-        else:
-            self.sequence_duration = 0.0
+        self.sequence_duration = (
+            max(ev.time_s for ev in self.sequence.events)
+            if self.sequence else 0.0
+        )
 
+        # ---------- GUI ----------
         if gui:
-            track_events = {}
+            self._init_gui()
 
-            if self.audio_player:
-                track_events["audio"] = []
-                audio_duration = self.audio_player.duration
-            else:
-                audio_duration = 0.0
+    # ------------------------------------------------------------------ GUI
+    def _init_gui(self) -> None:
+        track_events = {}
 
-            midi_duration = 0.0
-            if self.sequence:
-                active_tracks = self.sequence.track_names
+        # audio bar (even if no note events)
+        audio_duration = 0.0
+        if self.audio_player:
+            track_events["audio"] = []
+            audio_duration = self.audio_player.duration
 
-                if self.config_file:
-                    with open(self.config_file) as f:
-                        config = json.load(f)
-                        mappings = config.get("track_mappings", {})
-                        active_tracks = [t for t in active_tracks if mappings.get(t)]
+        # per-track note-on event dots
+        midi_duration = 0.0
+        if self.sequence:
+            active_tracks = self.sequence.track_names
+            if self.config_file:
+                with open(self.config_file) as f:
+                    cfg = json.load(f).get("track_mappings", {})
+                    active_tracks = [t for t in active_tracks if cfg.get(t)]
 
-                for track in active_tracks:
-                    clean_track = track if track.strip() else "empty"
-                    track_events[clean_track] = [
-                        ev.time_s for ev in self.sequence.events
-                        if ev.track == track and ev.msg.type == "note_on"
-                    ]
+            for track in active_tracks:
+                name = track if track.strip() else "--empty--"
+                track_events[name] = [
+                    ev.time_s for ev in self.sequence.events
+                    if ev.track == track and ev.msg.type == "note_on"
+                ]
 
-                if self.sequence.events:
-                    midi_duration = max(ev.time_s for ev in self.sequence.events)
+            if self.sequence.events:
+                midi_duration = max(ev.time_s for ev in self.sequence.events)
 
-            total_duration = max(audio_duration, midi_duration)
+        total_duration = max(audio_duration, midi_duration)
+        if total_duration > 0:
+            self.gui = TerminalGUI(total_duration, track_events)
 
-            if total_duration > 0:
-                self.gui = TerminalGUI(total_duration, track_events)
-
+    # ---------------------------------------------------------------- play
     def play(self) -> None:
-        print("Starting PiPlayer...")
+        print("Starting PiPlayer…")
         if self.gui:
             self.gui.start()
 
+        # start sync
         if self.mode == "master":
-            print("🧭 Sync Mode: MASTER")
-            self.sync = SyncMaster()
+            self.sync = SyncMaster(self.get_time)      # broadcast playback time
             self.sync.start()
+            print("🧭  SYNC: master")
         elif self.mode == "follower":
-            print("🎯 Sync Mode: FOLLOWER")
             self.sync = SyncFollower()
             self.sync.start()
+            print("🎯  SYNC: follower")
 
         try:
             while True:
                 if self.gui:
                     self.gui.reset()
 
-                cycle_start = time.monotonic()
+                cycle_start = self.get_time()
 
+                # ---- start audio & sequence for this cycle ----
                 if self.audio_player:
                     self.audio_player.start()
 
@@ -112,13 +130,30 @@ class PiPlayer:
                     )
                     self.sequence_proc.start()
 
-                # Main monitoring loop
+                # --------------- monitoring loop ---------------
                 while True:
-                    if self.gui:
-                        now = self.get_time() - cycle_start
-                        self.gui.update(now)
+                    now_play = self.get_time() - cycle_start
 
-                    # Check audio finished
+                    if self.gui:
+                        self.gui.update(now_play)
+
+                    # ------ follower drift monitoring ------
+                    if isinstance(self.sync, SyncFollower):
+                        drift = self.sync.drift
+                        # print once per second
+                        if int(self.get_time()) != int(self.get_time() - 0.02):
+                            print(f"[drift] {drift:+.4f} s")
+
+                        # auto re-cue if drift too large
+                        if math.fabs(drift) > DRIFT_LIMIT:
+                            new_pos = self.get_time() % self.audio_player.duration
+                            print(f"[re-cue] drift {drift:+.3f} → seek {new_pos:.3f}")
+                            if self.audio_player:
+                                self.audio_player.start(seek=new_pos)
+                            cycle_start = self.get_time()
+                            continue
+
+                    # ------ end-of-audio handling ------
                     if self.audio_player and not self.audio_player.is_playing():
                         if self.loop:
                             self.audio_player.start()
@@ -127,10 +162,9 @@ class PiPlayer:
                         else:
                             break
 
-                    # Check sequence finished if no audio
+                    # ------ end-of-sequence only (no audio) ------
                     if not self.audio_player and self.sequence:
-                        now = self.get_time() - cycle_start
-                        if now >= self.sequence_duration:
+                        if now_play >= self.sequence_duration:
                             if self.loop:
                                 fresh_events = list(self.sequence.events)
                                 self.sequence_proc = multiprocessing.Process(
@@ -146,9 +180,9 @@ class PiPlayer:
 
                     time.sleep(0.02)
 
+                # ---------- graceful stop at cycle end ----------
                 if self.audio_player:
                     self.audio_player.wait_done()
-
                 if self.sequence_proc:
                     self.sequence_proc.terminate()
                     self.sequence_proc.join()
@@ -171,27 +205,32 @@ class PiPlayer:
             if self.sync:
                 self.sync.stop()
 
+    # ---------------------------------------------------------------- utils
     def get_time(self) -> float:
+        """Return master-aligned clock if follower, else monotonic()."""
         if isinstance(self.sync, SyncFollower):
             return self.sync.get_synced_time()
         return time.monotonic()
 
-# -------------------------------------------------------------------
+
+# ------------------------------------------------------------------- CLI
 def main() -> None:
-    multiprocessing.set_start_method('fork', force=True)
+    multiprocessing.set_start_method("fork", force=True)
 
     parser = argparse.ArgumentParser(
-        description="PiPlayer – Play audio and synchronized GPIO/MIDI signals."
+        description="PiPlayer – audio + GPIO/MIDI playback with optional network sync"
     )
     parser.add_argument("audio_file", nargs="?", default=None,
-                        help="Path to an audio file (WAV or MP3)")
-    parser.add_argument("-s", "--sequence", help="Path to a sequence file (MIDI)")
-    parser.add_argument("-l", "--loop", action="store_true", help="Loop playback indefinitely")
-    parser.add_argument("-g", "--gui", action="store_true", help="Show ASCII progress GUI")
+                        help="Audio file (WAV/MP3)")
+    parser.add_argument("-s", "--sequence", help="Sequence file (MIDI)")
+    parser.add_argument("-l", "--loop", action="store_true",
+                        help="Loop playback indefinitely")
+    parser.add_argument("-g", "--gui", action="store_true",
+                        help="Show ASCII progress GUI")
     parser.add_argument("--mode", choices=["local", "master", "follower"],
-                        default="local", help="Playback sync mode: local/master/follower")
+                        default="local", help="Sync mode (default=local)")
     parser.add_argument("--debug-midi", action="store_true",
-                        help="Print all Note events in the MIDI file and exit")
+                        help="Print note events and exit")
 
     args = parser.parse_args()
 
@@ -208,3 +247,7 @@ def main() -> None:
         mode=args.mode,
     )
     player.play()
+
+
+if __name__ == "__main__":
+    main()
