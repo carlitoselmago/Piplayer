@@ -9,11 +9,15 @@ from .modules.audio_player import AudioPlayer
 from .modules.terminal_gui import TerminalGUI
 from .modules.sequence_loader import SequenceLoader
 from .modules.sequence_process import SequenceProcess
+<<<<<<< HEAD
 from .modules.sync_network import SyncMaster, SyncFollower
 
 SYNC_TOLERANCE = 0.05
 SYNC_GRACE_TIME = 3.0
 SYNC_JUMP_AHEAD = 0.25
+=======
+
+>>>>>>> parent of c350eb7 (first version of sync module)
 
 class PiPlayer:
     def __init__(
@@ -23,20 +27,29 @@ class PiPlayer:
         loop: bool = False,
         gui: bool = False,
         config_file: Optional[str] = None,
+<<<<<<< HEAD
         mode: Optional[str] = None,
+=======
+>>>>>>> parent of c350eb7 (first version of sync module)
     ):
         self.audio_file = audio_file
         self.sequence_file = sequence_file
         self.loop = loop
         self.config_file = config_file
+<<<<<<< HEAD
         self.mode = mode  # 'master' or 'follower'
+=======
+>>>>>>> parent of c350eb7 (first version of sync module)
 
         self.audio_player: Optional[AudioPlayer] = None
         self.sequence: Optional[SequenceLoader] = None
         self.gui: Optional[TerminalGUI] = None
         self.sequence_proc: Optional[multiprocessing.Process] = None
+<<<<<<< HEAD
         self.sync_master: Optional[SyncMaster] = None
         self.sync_follower: Optional[SyncFollower] = None
+=======
+>>>>>>> parent of c350eb7 (first version of sync module)
 
         if self.audio_file:
             self.audio_player = AudioPlayer(self.audio_file)
@@ -125,6 +138,7 @@ class PiPlayer:
                         now = time.monotonic() - cycle_start
                         self.gui.update(now)
 
+<<<<<<< HEAD
                     if self.mode == "follower" and self.audio_player and self.sync_follower:
                         local_pos = self.audio_player.get_position()
                         master_time = self.sync_follower.get_synced_time()
@@ -137,6 +151,31 @@ class PiPlayer:
                                 self.audio_player.resume()
                                 wait_for_sync = False
                                 wait_after_sync = now
+=======
+                    # Check audio finished
+                    if self.audio_player and not self.audio_player.is_playing():
+                        if self.loop:
+                            self.audio_player.start()
+                            cycle_start = time.monotonic()
+                            continue
+                        else:
+                            break
+
+                    # Check sequence finished if no audio
+                    if not self.audio_player and self.sequence:
+                        now = time.monotonic() - cycle_start
+                        if now >= self.sequence_duration:
+                            if self.loop:
+                                fresh_events = list(self.sequence.events)
+                                self.sequence_proc = multiprocessing.Process(
+                                    target=SequenceProcess.run,
+                                    args=(fresh_events, time.monotonic()),
+                                    daemon=True
+                                )
+                                self.sequence_proc.start()
+                                cycle_start = time.monotonic()
+                                continue
+>>>>>>> parent of c350eb7 (first version of sync module)
                             else:
                                 continue
 
@@ -184,10 +223,13 @@ class PiPlayer:
         finally:
             if self.gui:
                 self.gui.stop()
+<<<<<<< HEAD
             if self.sync_master:
                 self.sync_master.stop()
             if self.sync_follower:
                 self.sync_follower.stop()
+=======
+>>>>>>> parent of c350eb7 (first version of sync module)
 
 
 def main() -> None:
@@ -218,7 +260,6 @@ def main() -> None:
         sequence_file=args.sequence,
         loop=args.loop,
         gui=args.gui,
-        mode=args.mode,
     )
     player.play()
 
