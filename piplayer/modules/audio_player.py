@@ -16,7 +16,7 @@ class AudioPlayer:
     def start(self, position: float = 0.0) -> None:
         """Start playback from a specific position."""
         self.player.play(self.filename)
-        self.player.seek(f"{position:.3f}", "absolute", "exact")
+        #self.player.seek(f"{position:.3f}", "absolute", "exact")
 
     def wait_done(self) -> None:
         """Wait until the audio finishes playing."""

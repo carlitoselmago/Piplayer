@@ -13,7 +13,7 @@ setup(
         'mido',
         'RPi.GPIO',
         'pydub',
-        'simpleaudio'.
+        'simpleaudio',
         'mpv'
     ],
 
