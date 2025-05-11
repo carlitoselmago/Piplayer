@@ -69,7 +69,7 @@ class SyncFollower:
                     self.drift = estimated_drift
                     self._offset += ALPHA * estimated_drift
 
-                except socket.timeout:
+                except (socket.timeout, struct.error):
                     continue
 
     def get_synced_time(self) -> float:
