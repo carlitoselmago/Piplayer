@@ -1,7 +1,93 @@
-import simpleaudio as sa
+import argparse
+import socket
+import struct
+import threading
+import time
 
-wave_obj = sa.WaveObject.from_wave_file("beat_fixed.wav")  # open WAV directly
-#sprint(f"Length (approx): {wave_obj.num_frames / wave_obj.sample_rate:.2f} seconds")
+BROADCAST_IP = '255.255.255.255'
+PORT = 5005
+GRACE_MS = 6  # Allowed drift in milliseconds
 
-play_obj = wave_obj.play()
-play_obj.wait_done()
+def get_millis():
+    return int(time.time() * 1000)
+
+def master():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+    start_time = get_millis()
+
+    while True:
+        now = get_millis()
+        elapsed = now - start_time
+        send_timestamp = now
+        packet = struct.pack('!QQ', elapsed, send_timestamp)
+        sock.sendto(packet, (BROADCAST_IP, PORT))
+        print(f"[MASTER] Elapsed: {elapsed / 1000:.3f}s")
+        time.sleep(1)
+
+
+def follower():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(('', PORT))
+    sock.settimeout(2.0)
+
+    start_time = get_millis()
+    drift_correction = 0
+    initialized = False
+    lock = threading.Lock()
+
+    def listener():
+        nonlocal drift_correction, initialized, start_time
+        while True:
+            try:
+                t_recv = get_millis()
+                data, _ = sock.recvfrom(1024)
+                t_now = get_millis()
+
+                # Unpack: elapsed_time from master, and time it was sent
+                elapsed_master, t_sent_master = struct.unpack('!QQ', data)
+
+                # Estimate one-way latency
+                estimated_latency = (t_now - t_sent_master) // 2
+                corrected_elapsed = elapsed_master + estimated_latency
+
+                local_elapsed = t_now - start_time + drift_correction
+                drift = corrected_elapsed - local_elapsed
+
+                if not initialized:
+                    drift_correction = corrected_elapsed - (t_now - start_time)
+                    initialized = True
+                    print(f"[FOLLOWER] Initial sync with latency compensation: drift_correction={drift_correction} ms")
+                elif abs(drift) > GRACE_MS:
+                    with lock:
+                        drift_correction += drift
+                    print(f"[FOLLOWER] Time adjusted by {drift} ms due to drift > {GRACE_MS} ms")
+
+            except socket.timeout:
+                print("[FOLLOWER] No signal from master (timeout)")
+                continue
+
+    threading.Thread(target=listener, daemon=True).start()
+
+    while True:
+        now = get_millis()
+        with lock:
+            local_elapsed = now - start_time + drift_correction
+        print(f"[FOLLOWER] Elapsed: {local_elapsed / 1000:.3f}s")
+        time.sleep(1)
+
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', choices=['master', 'follower'], required=True)
+    args = parser.parse_args()
+
+    if args.mode == 'master':
+        master()
+    elif args.mode == 'follower':
+        follower()
+
+if __name__ == '__main__':
+    main()

@@ -2,6 +2,7 @@
 *.wav
 *.mid
 *.json
+*.opus
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
