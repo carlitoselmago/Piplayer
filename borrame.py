@@ -6,7 +6,7 @@ import time
 
 BROADCAST_IP = '255.255.255.255'
 PORT = 5005
-GRACE_MS = 6  # Allowed drift in milliseconds
+GRACE_MS = 50  # Allowed drift in milliseconds
 
 def get_millis():
     return int(time.time() * 1000)
