@@ -1,5 +1,3 @@
-# piplayer/cli.py
-
 #!/usr/bin/env python3
 
 import time
@@ -108,8 +106,8 @@ class PiPlayer:
                 cycle_start = self.get_time()
 
                 if self.audio_player:
-                    self.audio_player.start(position=0.0 if not self.follow else self.get_time())
-                    
+                    self.audio_player.start()
+
                 if self.sequence:
                     fresh_events = list(self.sequence.events)
                     self.sequence_proc = multiprocessing.Process(
@@ -148,6 +146,9 @@ class PiPlayer:
                                 continue
                             else:
                                 break
+
+                    if self.follow and self.audio_player and self.audio_player.is_playing():
+                        self.audio_player.seek(self.get_time())
 
                     time.sleep(0.02)
 
