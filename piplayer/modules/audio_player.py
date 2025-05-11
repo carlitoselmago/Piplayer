@@ -19,9 +19,11 @@ class AudioPlayer:
         self._pause_offset: float = 0.0
 
         self.duration = self.seg.duration_seconds  # total duration in seconds
-
+        
     def start(self, seek: float = 0.0) -> None:
         """Start playing the audio from a specific time (default 0.0)."""
+        self.stop()  # <-- Prevent overlapping by stopping previous playback
+
         segment = self.seg[seek * 1000:]
         raw_data = segment.raw_data
         num_channels = segment.channels
@@ -38,6 +40,7 @@ class AudioPlayer:
         self._start_time = time.monotonic() - seek
         self._paused_time = None
         self._pause_offset = 0.0
+
 
     def wait_done(self) -> None:
         """Wait until the audio finishes."""
