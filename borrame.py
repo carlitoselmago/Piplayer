@@ -83,7 +83,8 @@ def follower():
                     print(f"[FOLLOWER] Adjusted by {drift} ms (RTT={rtt} ms, min RTT={min_rtt} ms)")
 
             except socket.timeout:
-                print("[FOLLOWER] No signal from master (timeout)")
+                pass
+                #print("[FOLLOWER] No signal from master (timeout)")
 
     threading.Thread(target=listener, daemon=True).start()
 
