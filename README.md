@@ -17,6 +17,7 @@ sudo bash install.sh
 
 - wav (recommended)
 - mp3
+- opus
 
 ### Sequences
 

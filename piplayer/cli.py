@@ -108,8 +108,8 @@ class PiPlayer:
                 cycle_start = self.get_time()
 
                 if self.audio_player:
-                    self.audio_player.start()
-
+                    self.audio_player.start(position=0.0 if not self.follow else self.get_time())
+                    
                 if self.sequence:
                     fresh_events = list(self.sequence.events)
                     self.sequence_proc = multiprocessing.Process(
