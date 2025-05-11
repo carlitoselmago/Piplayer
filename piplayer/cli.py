@@ -19,10 +19,10 @@ from .modules.sequence_loader import SequenceLoader
 from .modules.sequence_process import SequenceProcess
 from .modules.sync_network import SyncMaster, SyncFollower
 
-DRIFT_LIMIT = 0.050  # seconds – jump-correct if follower drift exceeds this
+DRIFT_LIMIT    = 0.050   # seconds
+RECUE_COOLDOWN = 1.0     # seconds between re-cues
 
 
-# ---------------------------------------------------------------------------
 class PiPlayer:
     def __init__(
         self,
@@ -31,7 +31,7 @@ class PiPlayer:
         loop: bool = False,
         gui: bool = False,
         config_file: Optional[str] = None,
-        mode: str = "local",           # "local", "master", "follower"
+        mode: str = "local",
     ):
         self.audio_file = audio_file
         self.sequence_file = sequence_file
@@ -45,7 +45,6 @@ class PiPlayer:
         self.sequence_proc: Optional[multiprocessing.Process] = None
         self.sync: Optional[SyncFollower] = None
 
-        # ---------- load resources ----------
         if self.audio_file:
             self.audio_player = AudioPlayer(self.audio_file)
 
@@ -57,21 +56,16 @@ class PiPlayer:
             if self.sequence else 0.0
         )
 
-        # ---------- GUI ----------
         if gui:
             self._init_gui()
 
-    # ------------------------------------------------------------------ GUI
     def _init_gui(self) -> None:
         track_events = {}
-
-        # audio bar (even if no note events)
         audio_duration = 0.0
         if self.audio_player:
             track_events["audio"] = []
             audio_duration = self.audio_player.duration
 
-        # per-track note-on event dots
         midi_duration = 0.0
         if self.sequence:
             active_tracks = self.sequence.track_names
@@ -94,15 +88,13 @@ class PiPlayer:
         if total_duration > 0:
             self.gui = TerminalGUI(total_duration, track_events)
 
-    # ---------------------------------------------------------------- play
     def play(self) -> None:
         print("Starting PiPlayer…")
         if self.gui:
             self.gui.start()
 
-        # start sync
         if self.mode == "master":
-            self.sync = SyncMaster(self.get_time)      # broadcast playback time
+            self.sync = SyncMaster(self.get_time)
             self.sync.start()
             print("🧭  SYNC: master")
         elif self.mode == "follower":
@@ -117,7 +109,6 @@ class PiPlayer:
 
                 cycle_start = self.get_time()
 
-                # ---- start audio & sequence for this cycle ----
                 if self.audio_player:
                     self.audio_player.start()
 
@@ -130,30 +121,41 @@ class PiPlayer:
                     )
                     self.sequence_proc.start()
 
-                # --------------- monitoring loop ---------------
                 while True:
                     now_play = self.get_time() - cycle_start
 
                     if self.gui:
                         self.gui.update(now_play)
 
-                    # ------ follower drift monitoring ------
                     if isinstance(self.sync, SyncFollower):
                         drift = self.sync.drift
-                        # print once per second
-                        if int(self.get_time()) != int(self.get_time() - 0.02):
+                        if int(self.get_time()) != int(self.get_time() - 0.2):
                             print(f"[drift] {drift:+.4f} s")
 
-                        # auto re-cue if drift too large
-                        if math.fabs(drift) > DRIFT_LIMIT:
-                            new_pos = self.get_time() % self.audio_player.duration
-                            print(f"[re-cue] drift {drift:+.3f} → seek {new_pos:.3f}")
-                            if self.audio_player:
-                                self.audio_player.start(seek=new_pos)
-                            cycle_start = self.get_time()
+                        now_t = self.get_time()
+                        if (abs(drift) > DRIFT_LIMIT and
+                            now_t - getattr(self, "_last_correction", 0.0) > RECUE_COOLDOWN):
+
+                            new_pos = now_t % self.audio_player.duration
+                            print(f"[re-cue] drift {drift:+.3f}s → seek {new_pos:.3f}s")
+
+                            self.audio_player.start(seek=new_pos)
+
+                            if self.sequence_proc:
+                                self.sequence_proc.terminate()
+                                self.sequence_proc.join()
+                            fresh = list(self.sequence.events)
+                            self.sequence_proc = multiprocessing.Process(
+                                target=SequenceProcess.run,
+                                args=(fresh, self.get_time() - new_pos),
+                                daemon=True
+                            )
+                            self.sequence_proc.start()
+
+                            cycle_start = self.get_time() - new_pos
+                            self._last_correction = now_t
                             continue
 
-                    # ------ end-of-audio handling ------
                     if self.audio_player and not self.audio_player.is_playing():
                         if self.loop:
                             self.audio_player.start()
@@ -162,7 +164,6 @@ class PiPlayer:
                         else:
                             break
 
-                    # ------ end-of-sequence only (no audio) ------
                     if not self.audio_player and self.sequence:
                         if now_play >= self.sequence_duration:
                             if self.loop:
@@ -180,7 +181,6 @@ class PiPlayer:
 
                     time.sleep(0.02)
 
-                # ---------- graceful stop at cycle end ----------
                 if self.audio_player:
                     self.audio_player.wait_done()
                 if self.sequence_proc:
@@ -205,15 +205,12 @@ class PiPlayer:
             if self.sync:
                 self.sync.stop()
 
-    # ---------------------------------------------------------------- utils
     def get_time(self) -> float:
-        """Return master-aligned clock if follower, else monotonic()."""
         if isinstance(self.sync, SyncFollower):
             return self.sync.get_synced_time()
         return time.monotonic()
 
 
-# ------------------------------------------------------------------- CLI
 def main() -> None:
     multiprocessing.set_start_method("fork", force=True)
 
