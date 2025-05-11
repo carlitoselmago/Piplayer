@@ -13,7 +13,8 @@ setup(
         'mido',
         'RPi.GPIO',
         'pydub',
-        'simpleaudio'
+        'simpleaudio'.
+        'mpv'
     ],
 
     entry_points={
