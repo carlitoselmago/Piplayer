@@ -6,7 +6,8 @@ import time
 
 BROADCAST_IP = '255.255.255.255'
 PORT = 5005
-GRACE_MS = 50  # Allowed drift in milliseconds
+GRACE_MS = 50  # You can set to 10, 20, 50, etc.
+LATENCY_SMOOTHING_ALPHA = 0.1  # Smaller is smoother
 
 def get_millis():
     return int(time.time() * 1000)
@@ -26,7 +27,6 @@ def master():
         print(f"[MASTER] Elapsed: {elapsed / 1000:.3f}s")
         time.sleep(1)
 
-
 def follower():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', PORT))
@@ -39,34 +39,43 @@ def follower():
 
     def listener():
         nonlocal drift_correction, initialized, start_time
+        smoothed_latency = 0
+        alpha = LATENCY_SMOOTHING_ALPHA
+
         while True:
             try:
                 t_recv = get_millis()
                 data, _ = sock.recvfrom(1024)
                 t_now = get_millis()
 
-                # Unpack: elapsed_time from master, and time it was sent
+                # Unpack: elapsed_time, send_timestamp
                 elapsed_master, t_sent_master = struct.unpack('!QQ', data)
 
-                # Estimate one-way latency
-                estimated_latency = (t_now - t_sent_master) // 2
-                corrected_elapsed = elapsed_master + estimated_latency
+                # Estimate raw one-way latency
+                sample_latency = (t_now - t_sent_master) // 2
 
+                if not initialized:
+                    smoothed_latency = sample_latency
+                    corrected_elapsed = elapsed_master + smoothed_latency
+                    drift_correction = corrected_elapsed - (t_now - start_time)
+                    initialized = True
+                    print(f"[FOLLOWER] Initial sync: drift_correction = {drift_correction} ms")
+                    continue
+
+                # EMA smoothing
+                smoothed_latency = int(alpha * sample_latency + (1 - alpha) * smoothed_latency)
+
+                corrected_elapsed = elapsed_master + smoothed_latency
                 local_elapsed = t_now - start_time + drift_correction
                 drift = corrected_elapsed - local_elapsed
 
-                if not initialized:
-                    drift_correction = corrected_elapsed - (t_now - start_time)
-                    initialized = True
-                    print(f"[FOLLOWER] Initial sync with latency compensation: drift_correction={drift_correction} ms")
-                elif abs(drift) > GRACE_MS:
+                if abs(drift) > GRACE_MS:
                     with lock:
                         drift_correction += drift
-                    print(f"[FOLLOWER] Time adjusted by {drift} ms due to drift > {GRACE_MS} ms")
+                    print(f"[FOLLOWER] Adjusted by {drift} ms (smoothed latency = {smoothed_latency} ms)")
 
             except socket.timeout:
                 print("[FOLLOWER] No signal from master (timeout)")
-                continue
 
     threading.Thread(target=listener, daemon=True).start()
 
@@ -76,8 +85,6 @@ def follower():
             local_elapsed = now - start_time + drift_correction
         print(f"[FOLLOWER] Elapsed: {local_elapsed / 1000:.3f}s")
         time.sleep(1)
-
-
 
 def main():
     parser = argparse.ArgumentParser()
