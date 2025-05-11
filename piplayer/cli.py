@@ -11,6 +11,10 @@ from .modules.sequence_loader import SequenceLoader
 from .modules.sequence_process import SequenceProcess
 from .modules.sync_network import SyncMaster, SyncFollower
 
+SYNC_TOLERANCE = 0.05
+SYNC_GRACE_TIME = 3.0
+SYNC_JUMP_AHEAD = 0.25
+
 class PiPlayer:
     def __init__(
         self,
@@ -94,6 +98,9 @@ class PiPlayer:
 
         try:
             last_correction = 0
+            wait_for_sync = False
+            wait_after_sync = False
+            sync_timer = 0
 
             while True:
                 if self.gui:
@@ -118,18 +125,30 @@ class PiPlayer:
                         now = time.monotonic() - cycle_start
                         self.gui.update(now)
 
-                    # Follower re-sync logic
                     if self.mode == "follower" and self.audio_player and self.sync_follower:
                         local_pos = self.audio_player.get_position()
                         master_time = self.sync_follower.get_synced_time()
                         drift = master_time - local_pos
                         now = time.monotonic()
 
-                        if abs(drift) > 0.1 and now - last_correction > 1.0:
-                            print(f"[sync] drift={drift:+.3f}s -> seeking to {master_time:.3f}s")
-                            self.audio_player.stop()
-                            self.audio_player.start(seek=master_time)
-                            last_correction = now
+                        if wait_for_sync:
+                            if abs(drift) - (now - sync_timer) < 0:
+                                print("[sync] playback resumes")
+                                self.audio_player.resume()
+                                wait_for_sync = False
+                                wait_after_sync = now
+                            else:
+                                continue
+
+                        if wait_after_sync and now - wait_after_sync < SYNC_GRACE_TIME:
+                            continue
+
+                        if abs(drift) > SYNC_TOLERANCE and local_pos > SYNC_GRACE_TIME:
+                            print(f"[sync] jump to {master_time + SYNC_JUMP_AHEAD:.2f}s (drift={drift:.3f}s)")
+                            self.audio_player.pause()
+                            self.audio_player.seek(master_time + SYNC_JUMP_AHEAD)
+                            wait_for_sync = True
+                            sync_timer = now
                         else:
                             print(f"[drift] {drift:+.3f} s")
 
