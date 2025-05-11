@@ -141,16 +141,15 @@ class PiPlayer:
 
                             self.audio_player.start(seek=new_pos)
 
-                            if self.sequence_proc:
-                                self.sequence_proc.terminate()
-                                self.sequence_proc.join()
-                            fresh = list(self.sequence.events)
-                            self.sequence_proc = multiprocessing.Process(
-                                target=SequenceProcess.run,
-                                args=(fresh, self.get_time() - new_pos),
-                                daemon=True
-                            )
-                            self.sequence_proc.start()
+                            if self.sequence and self.sequence.events:
+                                fresh = list(self.sequence.events)
+                                self.sequence_proc = multiprocessing.Process(
+                                    target=SequenceProcess.run,
+                                    args=(fresh, self.get_time() - new_pos),
+                                    daemon=True
+                                )
+                                self.sequence_proc.start()
+
 
                             cycle_start = self.get_time() - new_pos
                             self._last_correction = now_t
