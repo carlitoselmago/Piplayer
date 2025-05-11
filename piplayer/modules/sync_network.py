@@ -29,8 +29,9 @@ class SyncMaster:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             while not self._stop:
-                now = self.time_func()
-                message = struct.pack('d', now)
+                now = time.monotonic()
+                media_time = self.time_func()  # should return current media position
+                message = struct.pack('dd', now, media_time)
                 sock.sendto(message, ('<broadcast>', BROADCAST_PORT))
                 time.sleep(SYNC_INTERVAL)
 
@@ -39,6 +40,7 @@ class SyncFollower:
     def __init__(self):
         self._offset = 0.0
         self.drift = 0.0
+        self.corrected_time = 0.0
         self._stop = False
         self._thread: threading.Thread | None = None
 
@@ -62,15 +64,16 @@ class SyncFollower:
                 try:
                     data, _ = sock.recvfrom(1024)
                     recv_time = time.monotonic()
-                    (master_time,) = struct.unpack('d', data)
+                    t_send, master_pos = struct.unpack('dd', data)
 
-                    # Estimate delay and drift
-                    estimated_drift = recv_time - master_time
-                    self.drift = estimated_drift
-                    self._offset += ALPHA * estimated_drift
+                    estimated_delay = recv_time - t_send
+                    corrected_master_time = master_pos + estimated_delay
+
+                    self.drift = corrected_master_time - time.monotonic()
+                    self.corrected_time = corrected_master_time
 
                 except (socket.timeout, struct.error):
                     continue
 
     def get_synced_time(self) -> float:
-        return time.monotonic() - self._offset
+        return self.corrected_time
