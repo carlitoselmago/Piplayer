@@ -1,15 +1,18 @@
-#!/usr/bin/env python3
 # piplayer/cli.py
+
+#!/usr/bin/env python3
 
 import time
 import argparse
 import json
 import multiprocessing
 from typing import Optional
-from .modules.audio_player import AudioPlayer
-from .modules.terminal_gui import TerminalGUI
-from .modules.sequence_loader import SequenceLoader
-from .modules.sequence_process import SequenceProcess
+
+from piplayer.modules.audio_player import AudioPlayer
+from piplayer.modules.terminal_gui import TerminalGUI
+from piplayer.modules.sequence_loader import SequenceLoader
+from piplayer.modules.sequence_process import SequenceProcess
+from piplayer.modules.sync_network import SyncMaster, SyncFollower
 
 
 class PiPlayer:
@@ -20,16 +23,32 @@ class PiPlayer:
         loop: bool = False,
         gui: bool = False,
         config_file: Optional[str] = None,
+        master: bool = False,
+        follow: bool = False,
     ):
         self.audio_file = audio_file
         self.sequence_file = sequence_file
         self.loop = loop
         self.config_file = config_file
+        self.master = master
+        self.follow = follow
 
         self.audio_player: Optional[AudioPlayer] = None
         self.sequence: Optional[SequenceLoader] = None
         self.gui: Optional[TerminalGUI] = None
         self.sequence_proc: Optional[multiprocessing.Process] = None
+
+        self.sync = None
+        if self.master:
+            self.sync = SyncMaster()
+            self.sync.start()
+            self.get_time = time.monotonic
+        elif self.follow:
+            self.sync = SyncFollower()
+            self.sync.start()
+            self.get_time = self.sync.get_synced_time
+        else:
+            self.get_time = time.monotonic
 
         if self.audio_file:
             self.audio_player = AudioPlayer(self.audio_file)
@@ -86,7 +105,7 @@ class PiPlayer:
                 if self.gui:
                     self.gui.reset()
 
-                cycle_start = time.monotonic()
+                cycle_start = self.get_time()
 
                 if self.audio_player:
                     self.audio_player.start()
@@ -102,32 +121,30 @@ class PiPlayer:
 
                 # Main monitoring loop
                 while True:
+                    now = self.get_time() - cycle_start
+
                     if self.gui:
-                        now = time.monotonic() - cycle_start
                         self.gui.update(now)
 
-                    # Check audio finished
                     if self.audio_player and not self.audio_player.is_playing():
                         if self.loop:
                             self.audio_player.start()
-                            cycle_start = time.monotonic()
+                            cycle_start = self.get_time()
                             continue
                         else:
                             break
 
-                    # Check sequence finished if no audio
                     if not self.audio_player and self.sequence:
-                        now = time.monotonic() - cycle_start
                         if now >= self.sequence_duration:
                             if self.loop:
                                 fresh_events = list(self.sequence.events)
                                 self.sequence_proc = multiprocessing.Process(
                                     target=SequenceProcess.run,
-                                    args=(fresh_events, time.monotonic()),
+                                    args=(fresh_events, self.get_time()),
                                     daemon=True
                                 )
                                 self.sequence_proc.start()
-                                cycle_start = time.monotonic()
+                                cycle_start = self.get_time()
                                 continue
                             else:
                                 break
@@ -156,6 +173,8 @@ class PiPlayer:
         finally:
             if self.gui:
                 self.gui.stop()
+            if self.sync:
+                self.sync.stop()
 
 
 # -------------------------------------------------------------------
@@ -170,6 +189,8 @@ def main() -> None:
     parser.add_argument("-s", "--sequence", help="Path to a sequence file (MIDI)")
     parser.add_argument("-l", "--loop", action="store_true", help="Loop playback indefinitely")
     parser.add_argument("-g", "--gui", action="store_true", help="Show ASCII progress GUI")
+    parser.add_argument("--master", action="store_true", help="Run as time sync master")
+    parser.add_argument("--follow", action="store_true", help="Follow time sync from network")
     parser.add_argument("--debug-midi", action="store_true",
                         help="Print all Note events in the MIDI file and exit")
 
@@ -185,5 +206,7 @@ def main() -> None:
         sequence_file=args.sequence,
         loop=args.loop,
         gui=args.gui,
+        master=args.master,
+        follow=args.follow
     )
     player.play()
