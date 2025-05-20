@@ -75,7 +75,8 @@ def follower():
                     print(f"[FOLLOWER] Adjusted by {drift} ms (smoothed latency = {smoothed_latency} ms)")
 
             except socket.timeout:
-                print("[FOLLOWER] No signal from master (timeout)")
+                pass
+                #print("[FOLLOWER] No signal from master (timeout)")
 
     threading.Thread(target=listener, daemon=True).start()
 
