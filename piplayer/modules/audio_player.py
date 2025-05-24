@@ -21,13 +21,14 @@ class ClockSource(Protocol):
 
 
 # ───────── tweakables ─────────────────────────────
-MPV_LATENCY      = 0.0   # s  decode/display delay → subtract from time_pos
-SEEK_THRESHOLD   = 0.20   # s  ⇒ normal correction threshold
-LARGE_DRIFT      = 1.00   # s  ⇒ ignore cooldown if drift exceeds this
-SEEK_COOLDOWN    = 5.0    # s  ⇒ min gap between hard seeks
-SEEK_SETTLE      = 1.0    # s  ⇒ ignore drift this long after each seek
-PREDICTIVE_LEAD  = 0.10   # s  ⇒ compensate command → output latency
-SYNC_POLL        = 0.50   # s  ⇒ thread poll interval
+MPV_LATENCY      = 0.10  # 🔽 tighter estimate for fast decode
+SEEK_THRESHOLD   = 0.10  # 🔽 react to smaller drift
+LARGE_DRIFT      = 0.50  # 🔽 correct more often if sync degrades
+SEEK_COOLDOWN    = 3.0   # 🔽 allow more frequent small seeks
+SEEK_SETTLE      = 0.6   # 🔽 less delay after each seek
+PREDICTIVE_LEAD  = 0.15  # 🔼 slightly more proactive positioning
+SYNC_POLL        = 0.25  # 🔼 faster reaction loop
+
 # --------------------------------------------------
 
 
@@ -78,13 +79,18 @@ class AudioPlayer:
 
     # ───────────────────────────────────────────────
     def _sync_loop(self):
+        stable_interval = 1000.0   # slow check when in sync
+        active_interval = 0.25  # fast check when drift is big or adjusting
+
         while not self._stop_evt.is_set():
-            time.sleep(SYNC_POLL)
             if self.player.time_pos is None or not self._follower:
+                time.sleep(active_interval)
                 continue
 
             # Ignore drift while mpv is settling after a seek
-            if time.monotonic() < self._settle_until:
+            now = time.monotonic()
+            if now < self._settle_until:
+                time.sleep(active_interval)
                 continue
 
             player_pos = (self.player.time_pos or 0.0) - MPV_LATENCY
@@ -92,16 +98,17 @@ class AudioPlayer:
             drift = player_pos - master_time
 
             print(f"[Audio] Master={master_time:.2f}s  "
-                  f"Player={player_pos:.2f}s  Drift={drift:+.3f}s")
+                f"Player={player_pos:.2f}s  Drift={drift:+.3f}s")
 
-            # Small drift → no action
             if abs(drift) < SEEK_THRESHOLD:
+                time.sleep(stable_interval)
                 continue
 
-            now = time.monotonic()
             cooldown_ok = (now - self._last_seek) >= SEEK_COOLDOWN
             large_drift = abs(drift) > LARGE_DRIFT
+
             if not cooldown_ok and not large_drift:
+                time.sleep(stable_interval)
                 continue
 
             # Perform seek
@@ -113,6 +120,9 @@ class AudioPlayer:
                 self._settle_until = now + SEEK_SETTLE
             except Exception as e:
                 print("[Audio] seek error:", e)
+
+            time.sleep(active_interval)
+
 
     # ───────────────────────────────────────────────
     def stop(self):
