@@ -1,78 +1,145 @@
-# modules/sync_network.py
+import socket, threading, time, json, collections, statistics, uuid
 
-import socket
-import threading
-import time
-import json
+# ─── Configuration ───────────────────────────────────────────
+PORT            = 5005
+BROADCAST_IP    = "255.255.255.255"
+SYNC_PERIOD_S   = 0.50
 
-PORT = 5005
-BROADCAST_IP = '255.255.255.255'
-SYNC_INTERVAL = 0.02  # 20ms
+OUTLIER_RTT     = 0.120
+WIN             = 20
+LARGE_DRIFT     = 1.00
+SYNC_TOLERANCE  = 0.25
+SYNC_GRACE_S    = 10.0
+TIMEOUT_S       = 2.0   # ⏱ stop trusting master after this idle time
 
+# ─── SyncMaster ──────────────────────────────────────────────
 class SyncMaster:
     def __init__(self):
+        self._t0 = time.monotonic()
         self.running = False
+        self.session_id = str(uuid.uuid4())  # 💡 unique ID for this run
+        self.seq = 0
 
     def start(self):
         self.running = True
-        thread = threading.Thread(target=self._broadcast_loop, daemon=True)
-        thread.start()
+        print(f"[SyncMaster] ID = {self.session_id[:8]}")
+        threading.Thread(target=self._loop, daemon=True).start()
 
-    def _broadcast_loop(self):
+    def _loop(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         while self.running:
             now = time.monotonic()
-            payload = {
-                "t": now,       # This is the master sync time (playback time)
-                "sent": now     # The exact time it was sent
+            pkt = {
+                "t": now - self._t0,
+                "sent": now,
+                "id": self.session_id,
+                "seq": self.seq
             }
-            msg = json.dumps(payload).encode("utf-8")
-            sock.sendto(msg, (BROADCAST_IP, PORT))
-            time.sleep(SYNC_INTERVAL)
+            sock.sendto(json.dumps(pkt).encode(), (BROADCAST_IP, PORT))
+            self.seq += 1
+            time.sleep(SYNC_PERIOD_S)
 
-    def stop(self):
-        self.running = False
+    def stop(self): self.running = False
 
-
+# ─── SyncFollower ────────────────────────────────────────────
 class SyncFollower:
     def __init__(self):
-        self.offset = 0.0  # time correction offset
+        self._t0 = time.monotonic()
+        self._pairs = collections.deque(maxlen=WIN)
+        self._a = 1.0
+        self._b = 0.0
+        self._drifts = collections.deque(maxlen=10)
         self.running = False
+        self._master_id = None
+        self._last_received = 0.0
+
+    def _local(self) -> float:
+        return time.monotonic() - self._t0
 
     def start(self):
         self.running = True
-        thread = threading.Thread(target=self._listen_loop, daemon=True)
-        thread.start()
+        threading.Thread(target=self._listen, daemon=True).start()
 
-    def _listen_loop(self):
+    def _listen(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(('', PORT))
+
         while self.running:
             try:
-                data, _ = sock.recvfrom(4096)
-                now = time.monotonic()
-                msg = json.loads(data.decode("utf-8"))
-                
-                master_time = msg.get("t")
-                master_sent = msg.get("sent")
-                if master_time is None or master_sent is None:
+                data, addr = sock.recvfrom(256)
+                recv = time.monotonic()
+                pkt = json.loads(data.decode())
+
+                t_m  = pkt.get("t")
+                sent = pkt.get("sent")
+                mid  = pkt.get("id")
+                seq  = pkt.get("seq")
+
+                if None in (t_m, sent, mid):
                     continue
 
-                delay = now - master_sent  # total delay
-                estimated_master_time = master_time + (delay / 2)
-                local_time = now
-                drift = estimated_master_time - local_time
+                # Identity match
+                if self._master_id is None:
+                    self._master_id = mid
+                    print(f"[SyncFollower] Master locked: {mid[:8]}")
+                elif mid != self._master_id:
+                    print(f"[SyncFollower] Ignoring other master {mid[:8]}")
+                    continue
 
-                # Apply smoothing (low-pass filter)
-                self.offset = 0.9 * self.offset + 0.1 * drift
+                rtt = recv - sent
+                if rtt > OUTLIER_RTT:
+                    continue
+
+                one_way = rtt / 2
+                master_now = t_m + one_way
+                self._pairs.append((master_now, recv - self._t0))
+                self._last_received = recv
+
+                if len(self._pairs) >= 3:
+                    self._recalc_lr()
+
+                drift = master_now - self.get_time()
+                self._drifts.append(drift)
 
             except Exception as e:
-                print(f"[SyncFollower] Error: {e}")
+                print("[SyncFollower] Error:", e)
 
-    def get_synced_time(self) -> float:
-        return time.monotonic() + self.offset
+    def _recalc_lr(self):
+        xs, ys = zip(*self._pairs)
+        mx, my = statistics.mean(xs), statistics.mean(ys)
+        cov = sum((x - mx) * (y - my) for x, y in self._pairs)
+        var = sum((x - mx)**2 for x in xs)
+        if var > 1e-9:
+            self._a = cov / var
+            self._b = my - self._a * mx
 
-    def stop(self):
-        self.running = False
+    def get_time(self) -> float:
+        if len(self._pairs) < 3:
+            raise RuntimeError("[SyncFollower] No valid sync received.")
+        return (self._local() - self._b) / self._a
+
+    get_synced_time = get_time  # for legacy calls
+
+    def median_drift(self) -> float:
+        if len(self._drifts) < 3:
+            return 0.0
+        lst = sorted(self._drifts)
+        n = len(lst)
+        return lst[n//2] if n % 2 else (lst[n//2 - 1] + lst[n//2]) / 2.0
+
+    def out_of_tolerance(self) -> bool:
+        if not self.has_active_master():
+            return False
+        if self._local() < SYNC_GRACE_S:
+            return False
+        return abs(self.median_drift()) > SYNC_TOLERANCE
+
+    def has_sync(self) -> bool:
+        return len(self._pairs) >= 3
+
+    def has_active_master(self) -> bool:
+        return (time.monotonic() - self._last_received) < TIMEOUT_S
+
+    def stop(self): self.running = False
