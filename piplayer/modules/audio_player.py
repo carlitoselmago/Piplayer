@@ -1,6 +1,7 @@
 """
 audio_player.py  –  mpv wrapper with master-clock sync (seek-only).
 
+
 Assumptions
 -----------
 • We run either in LOCAL/MASTER mode (no follower) or in FOLLOWER mode,
@@ -20,6 +21,7 @@ class ClockSource(Protocol):
     def get_time(self) -> float: ...
 
 
+
 # ───────── tweakables ─────────────────────────────
 MPV_LATENCY      = 0.10  # 🔽 tighter estimate for fast decode
 SEEK_THRESHOLD   = 0.10  # 🔽 react to smaller drift
@@ -35,6 +37,7 @@ SYNC_POLL        = 0.25  # 🔼 faster reaction loop
 class AudioPlayer:
     def __init__(self, filename: str):
         self.filename = filename
+
         self.player = MPV(input_default_bindings=True)
         self._follower: Optional[ClockSource] = None
 
@@ -141,3 +144,4 @@ class AudioPlayer:
 
     def is_playing(self):
         return self.player.time_pos is not None
+

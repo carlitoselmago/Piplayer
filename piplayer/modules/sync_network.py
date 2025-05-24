@@ -1,5 +1,6 @@
 import socket, threading, time, json, collections, statistics, uuid
 
+
 # ─── Configuration ───────────────────────────────────────────
 PORT            = 5005
 BROADCAST_IP    = "255.255.255.255"
@@ -12,8 +13,10 @@ SYNC_TOLERANCE  = 0.25
 SYNC_GRACE_S    = 10.0
 TIMEOUT_S       = 2.0   # ⏱ stop trusting master after this idle time
 
+
 # ─── SyncMaster ──────────────────────────────────────────────
 class SyncMaster:
+
     def __init__(self):
         self._t0 = time.monotonic()
         self.running = False
@@ -42,9 +45,11 @@ class SyncMaster:
 
     def stop(self): self.running = False
 
+
 # ─── SyncFollower ────────────────────────────────────────────
 class SyncFollower:
     def __init__(self):
+
         self._t0 = time.monotonic()
         self._pairs = collections.deque(maxlen=WIN)
         self._a = 1.0
@@ -143,3 +148,4 @@ class SyncFollower:
         return (time.monotonic() - self._last_received) < TIMEOUT_S
 
     def stop(self): self.running = False
+

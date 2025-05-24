@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-# piplayer/cli.py
+# cli.py
 
 import time
 import argparse
@@ -12,6 +11,7 @@ from .modules.terminal_gui import TerminalGUI
 from .modules.sequence_loader import SequenceLoader
 from .modules.sequence_process import SequenceProcess
 from .modules.sync_network   import SyncMaster, SyncFollower
+
 
 
 class PiPlayer:
@@ -36,26 +36,32 @@ class PiPlayer:
         self.sequence_proc:  Optional[multiprocessing.Process] = None
         self.sync:           Optional[SyncFollower]     = None
 
+
         if self.audio_file:
             self.audio_player = AudioPlayer(self.audio_file)
 
         if self.sequence_file:
             self.sequence = SequenceLoader(self.sequence_file)
 
+
         self.sequence_duration = max(
             (ev.time_s for ev in self.sequence.events), default=0.0
         ) if self.sequence else 0.0
 
+
         # optional GUI prep  ︙ (unchanged) ︙
         if gui:
             track_events = {}
+
             # ( … same as before – omitted for brevity … )
             # keep all existing GUI code here
     # ────────────────────────────────────────────────────────
+
     def play(self) -> None:
         print("Starting PiPlayer…")
         if self.gui:
             self.gui.start()
+
 
         # create sync object
         if self.mode == "master":
@@ -79,12 +85,19 @@ class PiPlayer:
                 print("[SyncFollower] ❌ Timeout — no master detected. Exiting.")
                 return  # or raise SystemExit(1)
 
+
         try:
+            wait_for_sync = False
+            wait_after_sync = False
+            sync_timer = 0
+
             while True:
                 if self.gui:
                     self.gui.reset()
 
+
                 cycle_start_monotonic = time.monotonic()
+
 
                 # ─── AUDIO ──────────────────────────────────────
                 if self.audio_player:
@@ -94,7 +107,9 @@ class PiPlayer:
                     else:
                         self.audio_player.start()         # local / master
 
+
                 # ─── SEQUENCE (GPIO/MIDI) ──────────────────────
+
                 if self.sequence:
                     fresh_events = list(self.sequence.events)
                     time_fn = self.sync.get_time if self.sync else time.monotonic
@@ -105,12 +120,15 @@ class PiPlayer:
                     )
                     self.sequence_proc.start()
 
+
                 # ─── MAIN LOOP ─────────────────────────────────
+
                 while True:
                     now_mono = time.monotonic()
 
                     if self.gui:
                         self.gui.update(now_mono - cycle_start_monotonic)
+
 
                     # audio finished?
                     if self.audio_player and not self.audio_player.is_playing():
@@ -139,6 +157,7 @@ class PiPlayer:
                                 self.sequence_proc.start()
                                 cycle_start_monotonic = now_mono
                                 continue
+
                             break
 
                     time.sleep(0.05)
@@ -166,8 +185,10 @@ class PiPlayer:
         finally:
             if self.gui:
                 self.gui.stop()
+
             if self.sync:
                 self.sync.stop()
+
 
 # -------------------------------------------------------------------
 def main() -> None:
@@ -186,6 +207,7 @@ def main() -> None:
 
     if args.debug_midi and args.sequence:
         SequenceLoader(args.sequence).debug_print()
+
         return
 
     PiPlayer(
@@ -194,4 +216,6 @@ def main() -> None:
         loop=args.loop,
         gui=args.gui,
         mode=args.mode,
+
     ).play()
+
