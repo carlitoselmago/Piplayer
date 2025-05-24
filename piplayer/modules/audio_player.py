@@ -23,7 +23,7 @@ class ClockSource(Protocol):
 
 
 # ───────── tweakables ─────────────────────────────
-MPV_LATENCY      = 0.10  # 🔽 tighter estimate for fast decode
+MPV_LATENCY      = 0.30  # 🔽 tighter estimate for fast decode
 SEEK_THRESHOLD   = 0.10  # 🔽 react to smaller drift
 LARGE_DRIFT      = 0.50  # 🔽 correct more often if sync degrades
 SEEK_COOLDOWN    = 3.0   # 🔽 allow more frequent small seeks
