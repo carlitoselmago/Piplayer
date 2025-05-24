@@ -2,6 +2,9 @@
 *.wav
 *.mid
 *.json
+
+*.mp4
+
 *.opus
 *.mp4
 # Byte-compiled / optimized / DLL files
