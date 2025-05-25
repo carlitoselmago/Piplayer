@@ -54,6 +54,10 @@ Install with this for development
 ```
 sudo pip install -e .
 ```
+If using new versions of PiOS and you want to ignore the venv warnings use this flag
+```
+sudo pip install --break-system-packages -e .
+```
 
 ## Known issues
 - It is reported to not work with Python 3.13, stay below 3.12
