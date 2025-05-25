@@ -37,18 +37,14 @@ And for playback run:
 piplayer beat.wav --sequence seq.mid --loop --gui
 ```
 
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 ## Sync modes
 ```
 piplayer sound.wav -s lights.mid --gui --mode master
 piplayer sound.wav -s lights.mid --gui --mode follower
 ```
 
-=======
->>>>>>> parent of c350eb7 (first version of sync module)
-=======
->>>>>>> parent of c350eb7 (first version of sync module)
+
 ## Developer notes:
 
 **TODO:**
