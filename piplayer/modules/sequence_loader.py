@@ -22,7 +22,7 @@ class SequenceLoader:
         self.midi_path = midi_path
         self.events: List[MidiEvent] = []
         self.track_names: List[str] = []
-
+        
         self._load()
 
     # -----------------------------------------------------------------

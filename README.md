@@ -34,7 +34,7 @@ piplayer-setup myfile.mid
 And for playback run:
 
 ```
-piplayer beat.wav --sequence seq.mid --loop --gui
+piplayer beat.wav --sequence seq.mid --loop --gui -c config.json
 ```
 
 
