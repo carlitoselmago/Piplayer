@@ -13,7 +13,7 @@ class HTTPSWITCHdriver:
         self,
         ip: str,
         electric_group: int | None = None,
-        timeout: float = 1.0,
+        timeout: float = 2.0,
         mock: bool = False,
         track: str | None = None,
     ):
@@ -71,8 +71,14 @@ class HTTPSWITCHdriver:
             print(f"[Mock HTTP] {self.ip} ← Power {power_state}")
             return
 
-        try:
-            r = requests.get(url, params=params, timeout=self.timeout)
-            print(f"[HTTP] {self.ip} ← Power {power_state} ({r.status_code})")
-        except requests.RequestException as e:
-            print(f"[HTTP ERROR] {self.ip}: {e}")
+        for attempt in range(2):  # 1 retry
+            try:
+                r = requests.get(url, params=params, timeout=self.timeout)
+                print(f"[HTTP] {self.ip} ← Power {power_state} ({r.status_code})")
+                return
+            except requests.RequestException as e:
+                if attempt == 0:
+                    print(f"[HTTP WARN] {self.ip}: retrying after error: {e}")
+                    time.sleep(0.1)
+                else:
+                    print(f"[HTTP ERROR] {self.ip}: {e}")
