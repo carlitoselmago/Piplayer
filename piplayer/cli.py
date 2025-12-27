@@ -9,7 +9,8 @@ from typing import Optional, List
 from .modules.audio_player import AudioPlayer
 from .modules.terminal_gui import TerminalGUI
 from .modules.sequence_loader import SequenceLoader
-from .modules.sequence_process import SequenceProcess
+#from .modules.sequence_process import SequenceProcess
+from .modules.sequence_process_mercedes import SequenceProcess
 from .modules.sync_network import SyncMaster, SyncFollower
 
 from .modules.gpio_driver import GPIODriver

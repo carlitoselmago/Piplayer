@@ -5,13 +5,8 @@ import requests
 
 class HTTPSWITCHdriver:
     """
-    Controls an HTTP-enabled switch (e.g. Tasmota) for a whole MIDI track.
-
-    - All MIDI notes trigger the same device
-    - Velocity > 0  → Power ON
-    - Note off or velocity = 0 → Power OFF
-
-    Extra metadata (electric_group, etc.) is stored for future logic.
+    Simple HTTP switch controller.
+    Alternation / electric group logic is handled elsewhere.
     """
 
     def __init__(
@@ -28,6 +23,9 @@ class HTTPSWITCHdriver:
         self.mock = mock
         self.track = track
 
+        self.requested_on = False      # desired MIDI state
+        self.current_on = False        # last applied state
+
         mode = "Mock HTTP" if mock else "Real HTTP"
         label = f" track='{track}'" if track else ""
         print(f"[{mode}] HTTP switch prepared:{label}")
@@ -35,29 +33,36 @@ class HTTPSWITCHdriver:
         if electric_group is not None:
             print(f"  Electric group: {electric_group}")
 
-    # ────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────
+    # MIDI
+    # ─────────────────────────────────────────
     def note_on(self, note: int, velocity: int) -> None:
-        """
-        Turn device ON if velocity > 0, otherwise OFF.
-        """
-        if velocity > 0:
-            self._send("On")
-        else:
-            self._send("Off")
+        self.requested_on = velocity > 0
 
     def note_off(self, note: int) -> None:
-        """
-        Turn device OFF.
-        """
-        self._send("Off")
+        self.requested_on = False
 
     def cleanup(self) -> None:
-        """
-        No persistent state, kept for API symmetry.
-        """
+        self.requested_on = False
+        self._apply(False)
         print(f"[HTTP] Cleanup called for {self.ip}")
 
-    # ────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────
+    # External controller calls this
+    # ─────────────────────────────────────────
+    def force_state(self, on: bool):
+        self._apply(on)
+
+    def _apply(self, on: bool):
+        if self.current_on == on:
+            return
+
+        self.current_on = on
+        self._send("On" if on else "Off")
+
+    # ─────────────────────────────────────────
+    # HTTP
+    # ─────────────────────────────────────────
     def _send(self, power_state: str) -> None:
         url = f"http://{self.ip}/cm"
         params = {"cmnd": f"Power {power_state}"}
